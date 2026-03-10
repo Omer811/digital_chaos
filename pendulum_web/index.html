@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Double Pendulum Trace Lab</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Serif+Display&display=swap');
+
+    :root {
+      --bg-0: #0d1117;
+      --bg-1: #0f172a;
+      --bg-2: #111827;
+      --accent: #22d3ee;
+      --accent-2: #f59e0b;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --panel: rgba(15, 23, 42, 0.75);
+      --panel-border: rgba(148, 163, 184, 0.25);
+      --glow: rgba(34, 211, 238, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(1200px 800px at 15% 15%, #1f2937 0%, var(--bg-0) 55%, #050709 100%);
+      overflow: hidden;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(280px, 320px) 1fr;
+      gap: 18px;
+      padding: 20px;
+      height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 18px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+
+    .title {
+      font-family: "DM Serif Display", serif;
+      font-size: 1.6rem;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .control-group {
+      border-top: 1px solid rgba(148, 163, 184, 0.15);
+      padding-top: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .control {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    input[type="range"], input[type="number"], input[type="text"], select {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--ink);
+      padding: 6px 8px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+    }
+
+    .buttons {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    button {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(34, 211, 238, 0.15);
+      color: var(--ink);
+      padding: 10px 12px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 30px rgba(34, 211, 238, 0.2);
+    }
+
+    .canvas-wrap {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.75);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(6, 10, 16, 0.9) 100%);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hint {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--muted);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      backdrop-filter: blur(8px);
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .panel {
+        max-height: 45vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div>
+        <div class="title">Double Pendulum Trace Lab</div>
+        <div class="subtitle">
+          A deterministic chaos sketch. Kick the pendulum with a seeded PRNG, then
+          watch the trace decay as time flows.
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="toggle">Pause</button>
+        <button id="reset">Reset</button>
+        <button id="reseed">Re-seed Kick</button>
+        <button id="clear">Clear Trace</button>
+        <button id="exportTrace">Export Trace PNG</button>
+      </div>
+
+      <div class="control-group">
+        <div class="control">
+          <label>Mode <span id="modeLabel">Double</span></label>
+          <select id="mode">
+            <option value="double">Double pendulum</option>
+            <option value="single">Single pendulum</option>
+            <option value="coupled">Coupled pendulums</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label>Seed <span id="seedValue">42</span></label>
+          <input id="seed" type="number" min="0" max="999999" value="42" />
+        </div>
+
+        <div class="control">
+          <label>Kick magnitude <span id="kickValue">4.0</span></label>
+          <input id="kick" type="range" min="0" max="12" step="0.1" value="4" />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control">
+          <label>Length 1 <span id="l1Value">140</span></label>
+          <input id="l1" type="range" min="60" max="220" step="2" value="140" />
+        </div>
+        <div class="control">
+          <label>Length 2 <span id="l2Value">120</span></label>
+          <input id="l2" type="range" min="60" max="220" step="2" value="120" />
+        </div>
+        <div class="control">
+          <label>Mass 1 <span id="m1Value">1.0</span></label>
+          <input id="m1" type="range" min="0.5" max="3.0" step="0.1" value="1.0" />
+        </div>
+        <div class="control">
+          <label>Mass 2 <span id="m2Value">1.2</span></label>
+          <input id="m2" type="range" min="0.5" max="3.0" step="0.1" value="1.2" />
+        </div>
+        <div class="control">
+          <label>Gravity <span id="gValue">80.0</span></label>
+          <input id="g" type="range" min="5" max="200" step="1" value="80" />
+        </div>
+        <div class="control">
+          <label>Friction <span id="dValue">0.08</span></label>
+          <input id="damping" type="range" min="0" max="0.5" step="0.005" value="0.08" />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control">
+          <label>Coupled count <span id="countValue">4</span></label>
+          <input id="count" type="range" min="2" max="8" step="1" value="4" />
+        </div>
+        <div class="control">
+          <label>Base length <span id="baseLenValue">220</span></label>
+          <input id="baseLen" type="range" min="120" max="420" step="10" value="220" />
+        </div>
+        <div class="control">
+          <label>Spacing <span id="spacingValue">40</span></label>
+          <input id="spacing" type="range" min="10" max="80" step="2" value="40" />
+        </div>
+        <div class="control">
+          <label>Base mass <span id="baseMassValue">6.0</span></label>
+          <input id="baseMass" type="range" min="1" max="20" step="0.5" value="6" />
+        </div>
+        <div class="control">
+          <label>Base stiffness <span id="baseKValue">0.8</span></label>
+          <input id="baseK" type="range" min="0" max="4" step="0.1" value="0.8" />
+        </div>
+        <div class="control">
+          <label>Base friction <span id="baseFricValue">0.02</span></label>
+          <input id="baseFric" type="range" min="0" max="0.5" step="0.005" value="0.02" />
+        </div>
+        <div class="control">
+          <label>Time step <span id="dtValue">0.016</span></label>
+          <input id="dt" type="range" min="0.005" max="0.03" step="0.001" value="0.016" />
+        </div>
+        <div class="control">
+          <label>Substeps <span id="subValue">4</span></label>
+          <input id="substeps" type="range" min="1" max="8" step="1" value="4" />
+        </div>
+        <div class="control">
+          <label>Trace seconds <span id="traceValue">20</span></label>
+          <input id="trace" type="range" min="2" max="60" step="1" value="20" />
+        </div>
+        <div class="control">
+          <label>Trace fade <span id="fadeValue">On</span></label>
+          <select id="traceFade">
+            <option value="off" selected>Off</option>
+            <option value="on">On</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="hint">Drag to pan. Scroll to zoom.</div>
+    </section>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const controls = {
+      mode: document.getElementById("mode"),
+      seed: document.getElementById("seed"),
+      kick: document.getElementById("kick"),
+      l1: document.getElementById("l1"),
+      l2: document.getElementById("l2"),
+      m1: document.getElementById("m1"),
+      m2: document.getElementById("m2"),
+      g: document.getElementById("g"),
+      damping: document.getElementById("damping"),
+      count: document.getElementById("count"),
+      baseLen: document.getElementById("baseLen"),
+      spacing: document.getElementById("spacing"),
+      baseMass: document.getElementById("baseMass"),
+      baseK: document.getElementById("baseK"),
+      baseFric: document.getElementById("baseFric"),
+      dt: document.getElementById("dt"),
+      substeps: document.getElementById("substeps"),
+      trace: document.getElementById("trace"),
+      traceFade: document.getElementById("traceFade"),
+    };
+
+    const labels = {
+      mode: document.getElementById("modeLabel"),
+      seed: document.getElementById("seedValue"),
+      kick: document.getElementById("kickValue"),
+      l1: document.getElementById("l1Value"),
+      l2: document.getElementById("l2Value"),
+      m1: document.getElementById("m1Value"),
+      m2: document.getElementById("m2Value"),
+      g: document.getElementById("gValue"),
+      damping: document.getElementById("dValue"),
+      count: document.getElementById("countValue"),
+      baseLen: document.getElementById("baseLenValue"),
+      spacing: document.getElementById("spacingValue"),
+      baseMass: document.getElementById("baseMassValue"),
+      baseK: document.getElementById("baseKValue"),
+      baseFric: document.getElementById("baseFricValue"),
+      dt: document.getElementById("dtValue"),
+      substeps: document.getElementById("subValue"),
+      trace: document.getElementById("traceValue"),
+      traceFade: document.getElementById("fadeValue"),
+    };
+
+    const state = {
+      theta1: Math.PI / 2,
+      theta2: Math.PI / 2,
+      omega1: 0,
+      omega2: 0,
+      baseX: 0,
+      baseV: 0,
+      coupled: [],
+      origin: { x: 0, y: 0 },
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      dragging: false,
+      dragStart: { x: 0, y: 0 },
+      trace: [],
+      paused: false,
+      time: 0,
+    };
+
+    function resize() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      state.origin.x = rect.width / 2;
+      state.origin.y = rect.height * 0.2;
+    }
+
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function () {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function applyKick() {
+      const seed = Number(controls.seed.value) || 0;
+      const kick = Number(controls.kick.value);
+      const rng = mulberry32(seed);
+      const angle = rng() * Math.PI * 2;
+      const mag = rng() * kick;
+      state.omega1 = Math.cos(angle) * mag;
+      state.omega2 = Math.sin(angle) * mag;
+
+      if (controls.mode.value === "coupled") {
+        const count = Number(controls.count.value);
+        state.coupled = [];
+        for (let i = 0; i < count; i++) {
+          const a1 = (rng() * 0.6 + 0.7) * Math.PI / 2;
+          const a2 = (rng() * 0.6 + 0.7) * Math.PI / 2;
+          const w1 = (rng() - 0.5) * kick * 0.4;
+          const w2 = (rng() - 0.5) * kick * 0.4;
+          state.coupled.push({ theta1: a1, omega1: w1, theta2: a2, omega2: w2 });
+        }
+        state.baseX = 0;
+        state.baseV = 0;
+        state.trace = [];
+      }
+    }
+
+    function resetState() {
+      state.theta1 = Math.PI / 2;
+      state.theta2 = Math.PI / 2;
+      state.omega1 = 0;
+      state.omega2 = 0;
+      state.time = 0;
+      state.baseX = 0;
+      state.baseV = 0;
+      applyKick();
+    }
+
+    function getParams() {
+      return {
+        mode: controls.mode.value,
+        L1: Number(controls.l1.value),
+        L2: Number(controls.l2.value),
+        m1: Number(controls.m1.value),
+        m2: Number(controls.m2.value),
+        g: Number(controls.g.value),
+        damping: Number(controls.damping.value),
+        count: Number(controls.count.value),
+        baseLen: Number(controls.baseLen.value),
+        spacing: Number(controls.spacing.value),
+        baseMass: Number(controls.baseMass.value),
+        baseK: Number(controls.baseK.value),
+        baseFric: Number(controls.baseFric.value),
+      };
+    }
+
+    function derivsDouble(y, params) {
+      const { L1, L2, m1, m2, g, damping } = params;
+      const [a1, w1, a2, w2] = y;
+
+      const delta = a1 - a2;
+      const sinDelta = Math.sin(delta);
+      const cosDelta = Math.cos(delta);
+
+      const denom1 = L1 * (2 * m1 + m2 - m2 * Math.cos(2 * delta));
+      const denom2 = L2 * (2 * m1 + m2 - m2 * Math.cos(2 * delta));
+
+      const a1dot = w1;
+      const a2dot = w2;
+
+      const w1dot = (
+        -g * (2 * m1 + m2) * Math.sin(a1)
+        - m2 * g * Math.sin(a1 - 2 * a2)
+        - 2 * sinDelta * m2 * (w2 * w2 * L2 + w1 * w1 * L1 * cosDelta)
+      ) / denom1 - damping * w1;
+
+      const w2dot = (
+        2 * sinDelta * (
+          w1 * w1 * L1 * (m1 + m2)
+          + g * (m1 + m2) * Math.cos(a1)
+          + w2 * w2 * L2 * m2 * cosDelta
+        )
+      ) / denom2 - damping * w2;
+
+      return [a1dot, w1dot, a2dot, w2dot];
+    }
+
+    function derivsSingle(y, params) {
+      const { L1, g, damping } = params;
+      const [a1, w1] = y;
+      const a1dot = w1;
+      const w1dot = -g / L1 * Math.sin(a1) - damping * w1;
+      return [a1dot, w1dot];
+    }
+
+    function rk4Step(y, dt, params) {
+      if (params.mode === "single") {
+        const k1 = derivsSingle(y, params);
+        const y2 = [y[0] + k1[0] * dt / 2, y[1] + k1[1] * dt / 2];
+        const k2 = derivsSingle(y2, params);
+        const y3 = [y[0] + k2[0] * dt / 2, y[1] + k2[1] * dt / 2];
+        const k3 = derivsSingle(y3, params);
+        const y4 = [y[0] + k3[0] * dt, y[1] + k3[1] * dt];
+        const k4 = derivsSingle(y4, params);
+        return [
+          y[0] + dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
+          y[1] + dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]),
+        ];
+      }
+
+      const k1 = derivsDouble(y, params);
+      const y2 = y.map((v, i) => v + k1[i] * dt / 2);
+      const k2 = derivsDouble(y2, params);
+      const y3 = y.map((v, i) => v + k2[i] * dt / 2);
+      const k3 = derivsDouble(y3, params);
+      const y4 = y.map((v, i) => v + k3[i] * dt);
+      const k4 = derivsDouble(y4, params);
+      return y.map((v, i) => v + dt / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]));
+    }
+
+    function stepSimulation() {
+      const params = getParams();
+      const dt = Number(controls.dt.value);
+      const steps = Number(controls.substeps.value);
+      for (let i = 0; i < steps; i++) {
+        if (params.mode === "single") {
+          const y = [state.theta1, state.omega1];
+          const next = rk4Step(y, dt / steps, params);
+          state.theta1 = next[0];
+          state.omega1 = next[1];
+        } else if (params.mode === "coupled") {
+          stepCoupled(dt / steps, params);
+        } else {
+          const y = [state.theta1, state.omega1, state.theta2, state.omega2];
+          const next = rk4Step(y, dt / steps, params);
+          state.theta1 = next[0];
+          state.omega1 = next[1];
+          state.theta2 = next[2];
+          state.omega2 = next[3];
+        }
+        state.time += dt / steps;
+      }
+    }
+
+    function stepCoupled(dt, params) {
+      const count = params.count;
+      if (!state.coupled || state.coupled.length !== count) {
+        applyKick();
+      }
+
+      const L1 = params.L1;
+      const L2 = params.L2;
+      const m1 = params.m1;
+      const m2 = params.m2;
+      const g = params.g;
+      const damping = params.damping;
+      const M = params.baseMass;
+      const baseFric = params.baseFric;
+      const k = params.baseK;
+
+      let sumTerm = 0;
+      let sumSin1 = 0;
+
+      for (const p of state.coupled) {
+        const sin1 = Math.sin(p.theta1);
+        sumTerm += p.omega1 * p.omega1 * sin1;
+        sumSin1 += sin1;
+      }
+
+      const denom = M + (m1 + m2) * count;
+      const numer = (m1 + m2) * L1 * sumTerm - (m1 + m2) * g * sumSin1 - baseFric * state.baseV - k * state.baseX;
+      const a = denom > 0 ? numer / denom : 0;
+
+      for (const p of state.coupled) {
+        const delta = p.theta1 - p.theta2;
+        const sinDelta = Math.sin(delta);
+        const cosDelta = Math.cos(delta);
+        const denom1 = L1 * (2 * m1 + m2 - m2 * Math.cos(2 * delta));
+        const denom2 = L2 * (2 * m1 + m2 - m2 * Math.cos(2 * delta));
+
+        const w1dot = (
+          -g * (2 * m1 + m2) * Math.sin(p.theta1)
+          - m2 * g * Math.sin(p.theta1 - 2 * p.theta2)
+          - 2 * sinDelta * m2 * (p.omega2 * p.omega2 * L2 + p.omega1 * p.omega1 * L1 * cosDelta)
+        ) / denom1 - damping * p.omega1 - (a / L1) * Math.cos(p.theta1);
+
+        const w2dot = (
+          2 * sinDelta * (
+            p.omega1 * p.omega1 * L1 * (m1 + m2)
+            + g * (m1 + m2) * Math.cos(p.theta1)
+            + p.omega2 * p.omega2 * L2 * m2 * cosDelta
+          )
+        ) / denom2 - damping * p.omega2;
+
+        p.omega1 += w1dot * dt;
+        p.theta1 += p.omega1 * dt;
+        p.omega2 += w2dot * dt;
+        p.theta2 += p.omega2 * dt;
+      }
+
+      state.baseV += a * dt;
+      state.baseX += state.baseV * dt;
+    }
+
+    function getPositions() {
+      const params = getParams();
+      const L1 = params.L1 * state.zoom;
+      const L2 = params.L2 * state.zoom;
+
+      const baseX = state.origin.x + state.pan.x + state.baseX * state.zoom;
+      const x1 = baseX + L1 * Math.sin(state.theta1);
+      const y1 = state.origin.y + state.pan.y + L1 * Math.cos(state.theta1);
+
+      if (params.mode === "single") {
+        return { x1, y1, x2: x1, y2: y1, baseX };
+      }
+
+      if (params.mode === "coupled") {
+        const points = [];
+        const spacing = params.spacing * state.zoom;
+        const baseLen = params.baseLen * state.zoom;
+        const totalSpan = Math.min(baseLen, spacing * (params.count - 1));
+        const start = -totalSpan / 2;
+        for (const p of state.coupled) {
+          const anchorOffset = start + spacing * points.length;
+          const anchorX = baseX + anchorOffset;
+          const x1 = anchorX + L1 * Math.sin(p.theta1);
+          const y1 = state.origin.y + state.pan.y + L1 * Math.cos(p.theta1);
+          const x2 = x1 + L2 * Math.sin(p.theta2);
+          const y2 = y1 + L2 * Math.cos(p.theta2);
+          points.push({ x1, y1, x2, y2, anchorX });
+        }
+        return { baseX, points, baseLen, start, spacing };
+      }
+
+      const x2 = x1 + L2 * Math.sin(state.theta2);
+      const y2 = y1 + L2 * Math.cos(state.theta2);
+      return { x1, y1, x2, y2, baseX };
+    }
+
+    function draw() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      ctx.fillStyle = "rgba(10, 16, 26, 0.25)";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      const positions = getPositions();
+
+      const traceSeconds = Number(controls.trace.value);
+      const now = state.time;
+      if (controls.mode.value === "coupled") {
+        positions.points.forEach((p, idx) => {
+          if (!Array.isArray(state.trace[idx])) state.trace[idx] = [];
+          state.trace[idx].push({
+            x: (p.x2 - state.origin.x - state.pan.x) / state.zoom,
+            y: (p.y2 - state.origin.y - state.pan.y) / state.zoom,
+            t: now,
+          });
+        });
+      } else {
+        state.trace.push({
+          x: (positions.x2 - state.origin.x - state.pan.x) / state.zoom,
+          y: (positions.y2 - state.origin.y - state.pan.y) / state.zoom,
+          t: now,
+        });
+      }
+
+      ctx.lineWidth = 1.5;
+      const fadeOn = controls.traceFade.value === "on";
+      const maxPoints = fadeOn ? Math.min(12000, Math.floor(traceSeconds * 260)) : 60000;
+      if (controls.mode.value === "coupled") {
+        const palette = [
+          "#22d3ee",
+          "#f59e0b",
+          "#a78bfa",
+          "#34d399",
+          "#f472b6",
+          "#60a5fa",
+          "#f97316",
+          "#14b8a6",
+        ];
+        state.trace.forEach((track, idx) => {
+          if (track.length > maxPoints) {
+            track.splice(0, track.length - maxPoints);
+          }
+          ctx.beginPath();
+          for (let i = 0; i < track.length; i++) {
+            const p = track[i];
+            const age = now - p.t;
+            if (fadeOn && age > traceSeconds) continue;
+            const alpha = fadeOn ? 1 - age / traceSeconds : 0.8;
+            ctx.strokeStyle = `${palette[idx % palette.length]}${Math.round(alpha * 153)
+              .toString(16)
+              .padStart(2, "0")}`;
+            const x = state.origin.x + state.pan.x + p.x * state.zoom;
+            const y = state.origin.y + state.pan.y + p.y * state.zoom;
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        });
+      } else {
+        if (state.trace.length > maxPoints) {
+          state.trace.splice(0, state.trace.length - maxPoints);
+        }
+        ctx.beginPath();
+        for (let i = 0; i < state.trace.length; i++) {
+          const p = state.trace[i];
+          const age = now - p.t;
+          if (fadeOn && age > traceSeconds) {
+            continue;
+          }
+          const alpha = fadeOn ? 1 - age / traceSeconds : 0.8;
+          ctx.strokeStyle = `rgba(34, 211, 238, ${alpha * 0.6})`;
+          const x = state.origin.x + state.pan.x + p.x * state.zoom;
+          const y = state.origin.y + state.pan.y + p.y * state.zoom;
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.7)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(positions.baseX, state.origin.y + state.pan.y);
+      if (controls.mode.value === "coupled") {
+        const left = positions.baseX - positions.baseLen / 2;
+        const right = positions.baseX + positions.baseLen / 2;
+        ctx.moveTo(left, state.origin.y + state.pan.y);
+        ctx.lineTo(right, state.origin.y + state.pan.y);
+        for (const p of positions.points) {
+          ctx.moveTo(p.anchorX, state.origin.y + state.pan.y);
+          ctx.lineTo(p.x1, p.y1);
+          ctx.lineTo(p.x2, p.y2);
+        }
+      } else {
+        ctx.lineTo(positions.x1, positions.y1);
+        if (controls.mode.value === "double") {
+          ctx.lineTo(positions.x2, positions.y2);
+        }
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+      ctx.beginPath();
+      ctx.arc(positions.baseX, state.origin.y + state.pan.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (controls.mode.value === "coupled") {
+        const palette = [
+          "#22d3ee",
+          "#f59e0b",
+          "#a78bfa",
+          "#34d399",
+          "#f472b6",
+          "#60a5fa",
+          "#f97316",
+          "#14b8a6",
+        ];
+        const r1 = 8 + Number(controls.m1.value) * 2;
+        const r2 = 7 + Number(controls.m2.value) * 2;
+        positions.points.forEach((p, idx) => {
+          const color = palette[idx % palette.length];
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(p.x1, p.y1, r1, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(p.x2, p.y2, r2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      } else {
+        ctx.fillStyle = "rgba(34, 211, 238, 0.9)";
+        ctx.beginPath();
+        ctx.arc(positions.x1, positions.y1, 10 + Number(controls.m1.value) * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (controls.mode.value === "double") {
+          ctx.fillStyle = "rgba(245, 158, 11, 0.9)";
+          ctx.beginPath();
+          ctx.arc(positions.x2, positions.y2, 10 + Number(controls.m2.value) * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    function collectTracePoints() {
+      if (controls.mode.value === "coupled") {
+        return state.trace.flat();
+      }
+      return state.trace;
+    }
+
+    function exportTracePng() {
+      const points = collectTracePoints();
+      if (!points || points.length < 2) {
+        alert("No trace data to export yet.");
+        return;
+      }
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      const padding = 20;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+      const width = Math.max(1, Math.ceil(maxX - minX));
+      const height = Math.max(1, Math.ceil(maxY - minY));
+
+      const off = document.createElement("canvas");
+      const ratio = window.devicePixelRatio || 1;
+      off.width = width * ratio;
+      off.height = height * ratio;
+      const octx = off.getContext("2d");
+      octx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      octx.clearRect(0, 0, width, height);
+
+      const traceSeconds = Number(controls.trace.value);
+      const fadeOn = controls.traceFade.value === "on";
+      const now = state.time;
+
+      if (controls.mode.value === "coupled") {
+        const palette = [
+          "#22d3ee",
+          "#f59e0b",
+          "#a78bfa",
+          "#34d399",
+          "#f472b6",
+          "#60a5fa",
+          "#f97316",
+          "#14b8a6",
+        ];
+        state.trace.forEach((track, idx) => {
+          if (!track || track.length < 2) return;
+          octx.beginPath();
+          for (let i = 0; i < track.length; i++) {
+            const p = track[i];
+            const age = now - p.t;
+            if (fadeOn && age > traceSeconds) continue;
+            const alpha = fadeOn ? 1 - age / traceSeconds : 0.8;
+            octx.strokeStyle = `${palette[idx % palette.length]}${Math.round(alpha * 153)
+              .toString(16)
+              .padStart(2, "0")}`;
+            const x = p.x - minX;
+            const y = p.y - minY;
+            if (i === 0) octx.moveTo(x, y);
+            else octx.lineTo(x, y);
+          }
+          octx.stroke();
+        });
+      } else {
+        octx.beginPath();
+        for (let i = 0; i < state.trace.length; i++) {
+          const p = state.trace[i];
+          const age = now - p.t;
+          if (fadeOn && age > traceSeconds) continue;
+          const alpha = fadeOn ? 1 - age / traceSeconds : 0.8;
+          octx.strokeStyle = `rgba(34, 211, 238, ${alpha * 0.6})`;
+          const x = p.x - minX;
+          const y = p.y - minY;
+          if (i === 0) octx.moveTo(x, y);
+          else octx.lineTo(x, y);
+        }
+        octx.stroke();
+      }
+
+      off.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `pendulum_trace_${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    }
+
+    function updateLabels() {
+      labels.mode.textContent = controls.mode.value === "double" ? "Double" : "Single";
+      if (controls.mode.value === "coupled") labels.mode.textContent = "Coupled";
+      labels.seed.textContent = controls.seed.value;
+      labels.kick.textContent = Number(controls.kick.value).toFixed(1);
+      labels.l1.textContent = controls.l1.value;
+      labels.l2.textContent = controls.l2.value;
+      labels.m1.textContent = Number(controls.m1.value).toFixed(1);
+      labels.m2.textContent = Number(controls.m2.value).toFixed(1);
+      labels.g.textContent = Number(controls.g.value).toFixed(2);
+      labels.damping.textContent = Number(controls.damping.value).toFixed(3);
+      labels.count.textContent = controls.count.value;
+      labels.baseLen.textContent = controls.baseLen.value;
+      labels.spacing.textContent = controls.spacing.value;
+      labels.baseMass.textContent = Number(controls.baseMass.value).toFixed(1);
+      labels.baseK.textContent = Number(controls.baseK.value).toFixed(1);
+      labels.baseFric.textContent = Number(controls.baseFric.value).toFixed(2);
+      labels.dt.textContent = Number(controls.dt.value).toFixed(3);
+      labels.substeps.textContent = controls.substeps.value;
+      labels.trace.textContent = controls.trace.value;
+      labels.traceFade.textContent = controls.traceFade.value === "on" ? "On" : "Off";
+    }
+
+    function updateSpacingLimit() {
+      const baseLen = Number(controls.baseLen.value);
+      const count = Number(controls.count.value);
+      const maxSpacing = count > 1 ? Math.max(10, Math.floor(baseLen / (count - 1))) : baseLen;
+      controls.spacing.max = String(maxSpacing);
+      if (Number(controls.spacing.value) > maxSpacing) {
+        controls.spacing.value = String(maxSpacing);
+      }
+      labels.spacing.textContent = controls.spacing.value;
+    }
+
+    function animate() {
+      if (!state.paused) {
+        stepSimulation();
+      }
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    document.getElementById("toggle").addEventListener("click", () => {
+      state.paused = !state.paused;
+      document.getElementById("toggle").textContent = state.paused ? "Resume" : "Pause";
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      resetState();
+      state.trace = [];
+    });
+
+    document.getElementById("reseed").addEventListener("click", () => {
+      applyKick();
+    });
+
+    document.getElementById("clear").addEventListener("click", () => {
+      state.trace = [];
+    });
+
+    document.getElementById("exportTrace").addEventListener("click", () => {
+      exportTracePng();
+    });
+
+    Object.values(controls).forEach((control) => {
+      control.addEventListener("input", () => {
+        updateLabels();
+        updateSpacingLimit();
+      });
+    });
+
+    canvas.addEventListener("mousedown", (e) => {
+      state.dragging = true;
+      state.dragStart = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener("mouseup", () => {
+      state.dragging = false;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!state.dragging) return;
+      const dx = e.clientX - state.dragStart.x;
+      const dy = e.clientY - state.dragStart.y;
+      state.dragStart = { x: e.clientX, y: e.clientY };
+      state.pan.x += dx;
+      state.pan.y += dy;
+    });
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = Math.sign(e.deltaY) * -0.05;
+      state.zoom = Math.max(0.4, Math.min(2.5, state.zoom + delta));
+    }, { passive: false });
+
+    window.addEventListener("resize", resize);
+
+    resize();
+    updateLabels();
+    updateSpacingLimit();
+    resetState();
+    animate();
+  </script>
+</body>
+</html>

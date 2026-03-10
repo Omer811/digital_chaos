@@ -1,0 +1,19 @@
+{
+  "lineId": "victoria",
+  "lineName": "Victoria",
+  "stations": [
+    {"id": "940GZZLUOXF", "name": "Oxford Circus Underground Station", "lat": 51.51517, "lon": -0.141903},
+    {"id": "940GZZLUGPK", "name": "Green Park Underground Station", "lat": 51.506947, "lon": -0.142787},
+    {"id": "940GZZLUVIC", "name": "Victoria Underground Station", "lat": 51.49636, "lon": -0.14454}
+  ],
+  "stopPointSequences": [
+    {
+      "name": "outbound",
+      "stopPoint": [
+        {"id": "940GZZLUOXF", "name": "Oxford Circus Underground Station"},
+        {"id": "940GZZLUGPK", "name": "Green Park Underground Station"},
+        {"id": "940GZZLUVIC", "name": "Victoria Underground Station"}
+      ]
+    }
+  ]
+}

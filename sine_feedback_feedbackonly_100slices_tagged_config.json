@@ -1,0 +1,33 @@
+{
+  "arduino": {
+    "fqbn": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodem1201",
+    "baud_rate": 115200,
+    "upload_before_run": true,
+    "sketch_path": "arduino/sine_feedback"
+  },
+  "experiment": {
+    "steps": 10000,
+    "sine_samples_per_cycle": 100,
+    "periods_per_signal": 4,
+    "time_slices": 100,
+    "pwm_pin": 9,
+    "analog_pin": 0,
+    "settle_us": 2000,
+    "oversample_count": 16,
+    "oversample_delay_us": 50,
+    "alpha_permille": 0,
+    "progress_every_steps": 1000,
+    "serial_timeout_seconds": 25,
+    "handshake_timeout_seconds": 5
+  },
+  "output": {
+    "dir": "output/sine_feedback_feedbackonly_100slices_run_2026_02_23",
+    "csv": "sine_feedback_steps_feedbackonly_100slices_2026_02_23.csv",
+    "plot_2d_png": "sine_feedback_2d_feedbackonly_100slices_2026_02_23.png",
+    "plot_2d_html": "sine_feedback_2d_feedbackonly_100slices_2026_02_23.html",
+    "plot_3d_png": "sine_feedback_3d_feedbackonly_100slices_2026_02_23.png",
+    "plot_3d_html": "sine_feedback_3d_feedbackonly_100slices_2026_02_23.html",
+    "plot_3d_mode": "slice_lines"
+  }
+}

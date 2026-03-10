@@ -1,0 +1,22 @@
+{
+  "output_dir": "output/london_metro_3d",
+  "phase": "all",
+  "mode": "live",
+  "fixture_dir": "london_metro_3d/fixtures",
+  "line_ids": ["victoria", "northern", "jubilee"],
+  "snapshots": 8,
+  "snapshot_interval_sec": 8.0,
+  "hotspot_grid_lon_bins": 36,
+  "hotspot_grid_lat_bins": 36,
+  "hotspot_grid_time_bins": 24,
+  "hotspot_top_k": 600,
+  "user_agent": "Mozilla/5.0 (CityLab Metro Experiment)",
+  "use_mode_arrivals_endpoint": true,
+  "request_timeout_sec": 30.0,
+  "request_max_retries": 4,
+  "request_backoff_sec": 1.0,
+  "respect_retry_after": true,
+  "request_rate_limit_per_min": 450,
+  "tfl_app_id": "",
+  "tfl_app_key": ""
+}

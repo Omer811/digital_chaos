@@ -1,0 +1,53 @@
+{
+  "arduino": {
+    "fqbn": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodem1201",
+    "baud_rate": 115200,
+    "upload_before_run": true,
+    "sketch_path": "arduino/noise_sampler"
+  },
+  "sampling": {
+    "sample_count": 1000,
+    "pins": [0, 1, 2, 3, 4],
+    "delay_us": 1000,
+    "channel_settle_us": 200,
+    "throwaway_reads_after_switch": 1,
+    "progress_every_samples": 100,
+    "serial_timeout_seconds": 20,
+    "handshake_timeout_seconds": 5
+  },
+  "processing": {
+    "standardize": true,
+    "pca_components": 3
+  },
+  "entropy": {
+    "bits_per_adc_value": 1,
+    "xor_group_size": 8,
+    "use_von_neumann": true,
+    "use_crc_mixing": true,
+    "crc_block_bytes": 32,
+    "use_hash_blocks": true,
+    "hash_block_bytes": 32,
+    "hash_algorithm": "sha256",
+    "hash_partial_block": true
+  },
+  "correlation": {
+    "auto_increase_delay_until_uncorrelated": true,
+    "lag1_abs_threshold": 0.2,
+    "delay_step_us": 500,
+    "max_delay_us": 10000,
+    "max_attempts": 25,
+    "fail_if_unmet": false
+  },
+  "output": {
+    "data_dir": "output/data",
+    "plots_dir": "output/plots",
+    "raw_csv": "raw_samples.csv",
+    "pca_csv": "pca_points.csv",
+    "correlation_report_json": "correlation_report.json",
+    "entropy_bin": "conditioned_entropy.bin",
+    "entropy_report_json": "entropy_report.json",
+    "plot_png": "pca_3d_scatter.png",
+    "plot_html": "pca_3d_scatter.html"
+  }
+}

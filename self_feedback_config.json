@@ -1,0 +1,24 @@
+{
+  "arduino": {
+    "fqbn": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodem1201",
+    "baud_rate": 115200,
+    "upload_before_run": true,
+    "sketch_path": "arduino/self_feedback"
+  },
+  "feedback": {
+    "sample_count": 100,
+    "initial_state": 1,
+    "threshold": 512,
+    "settle_us": 2000,
+    "progress_every_samples": 10,
+    "serial_timeout_seconds": 20,
+    "handshake_timeout_seconds": 5
+  },
+  "output": {
+    "dir": "output/self_feedback",
+    "csv": "self_feedback_samples.csv",
+    "plot_png": "self_feedback_2d.png",
+    "plot_html": "self_feedback_2d.html"
+  }
+}

@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DVD Bounce Trace Lab</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Serif+Display&display=swap');
+
+    :root {
+      --bg-0: #0c1118;
+      --bg-1: #101826;
+      --panel: rgba(15, 23, 42, 0.8);
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(1100px 800px at 15% 10%, #1f2937 0%, var(--bg-0) 60%, #050709 100%);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) 1fr;
+      gap: 18px;
+      padding: 20px;
+      height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+
+    .title {
+      font-family: "DM Serif Display", serif;
+      font-size: 1.6rem;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .buttons {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    button {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--ink);
+      padding: 10px 12px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: rgba(245, 158, 11, 0.15);
+    }
+
+    .control-group {
+      border-top: 1px solid rgba(148, 163, 184, 0.15);
+      padding-top: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .control {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    input[type="range"], input[type="number"], select {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--ink);
+      padding: 6px 8px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.75);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(6, 10, 16, 0.9) 100%);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+
+    .hint {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--muted);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      backdrop-filter: blur(8px);
+      max-width: 240px;
+    }
+
+    .status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.7);
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .panel {
+        max-height: 45vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div>
+        <div class="title">DVD Bounce Trace Lab</div>
+        <div class="subtitle">
+          Draw a closed boundary, then launch a ball. The ball reflects off edges with
+          mirror symmetry and leaves a persistent trace.
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="modeDraw">Draw Boundary</button>
+        <button id="closeShape" class="secondary">Close Shape</button>
+        <button id="launch">Launch Ball</button>
+        <button id="clear">Clear All</button>
+        <button id="runTestsBtn" class="secondary">Run Bounce Tests</button>
+      </div>
+
+      <div class="status" id="status">Mode: Draw. Click to add points. Double-click to close.</div>
+
+      <div class="control-group">
+        <div class="control">
+          <label>Speed <span id="speedValue">180</span></label>
+          <input id="speed" type="range" min="30" max="600" step="10" value="180" />
+        </div>
+        <div class="control">
+          <label>Ball radius <span id="radiusValue">6</span></label>
+          <input id="radius" type="range" min="2" max="16" step="1" value="6" />
+        </div>
+        <div class="control">
+          <label>Trace width <span id="traceWidthValue">1.6</span></label>
+          <input id="traceWidth" type="range" min="0.5" max="4" step="0.1" value="1.6" />
+        </div>
+        <div class="control">
+          <label>Initial angle <span id="angleValue">35</span></label>
+          <input id="angle" type="range" min="0" max="360" step="1" value="35" />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control">
+          <label>Trace fade <span id="fadeValue">Off</span></label>
+          <select id="traceFade">
+            <option value="off" selected>Off</option>
+            <option value="on">On</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>Fade seconds <span id="fadeSecondsValue">12</span></label>
+          <input id="fadeSeconds" type="range" min="2" max="40" step="1" value="12" />
+        </div>
+      </div>
+    </section>
+
+    <section class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="hint">Draw: click to add points. Double click or Close Shape to finish. Then Launch.</div>
+    </section>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const controls = {
+      speed: document.getElementById("speed"),
+      radius: document.getElementById("radius"),
+      traceWidth: document.getElementById("traceWidth"),
+      angle: document.getElementById("angle"),
+      traceFade: document.getElementById("traceFade"),
+      fadeSeconds: document.getElementById("fadeSeconds"),
+    };
+
+    const labels = {
+      speed: document.getElementById("speedValue"),
+      radius: document.getElementById("radiusValue"),
+      traceWidth: document.getElementById("traceWidthValue"),
+      angle: document.getElementById("angleValue"),
+      fade: document.getElementById("fadeValue"),
+      fadeSeconds: document.getElementById("fadeSecondsValue"),
+    };
+
+    const status = document.getElementById("status");
+
+    const state = {
+      mode: "draw",
+      boundary: [],
+      closed: false,
+      ball: { x: 0, y: 0, vx: 0, vy: 0 },
+      ballSpeedTarget: 0,
+      stalledFrames: 0,
+      trace: [],
+      time: 0,
+    };
+
+    function resize() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function updateLabels() {
+      labels.speed.textContent = controls.speed.value;
+      labels.radius.textContent = controls.radius.value;
+      labels.traceWidth.textContent = Number(controls.traceWidth.value).toFixed(1);
+      labels.angle.textContent = controls.angle.value;
+      labels.fade.textContent = controls.traceFade.value === "on" ? "On" : "Off";
+      labels.fadeSeconds.textContent = controls.fadeSeconds.value;
+    }
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+
+    function addPoint(x, y) {
+      state.boundary.push({ x, y });
+    }
+
+    function closeShape() {
+      if (state.boundary.length < 3) {
+        setStatus("Need at least 3 points to close.");
+        return;
+      }
+      state.closed = true;
+      state.mode = "ready";
+      setStatus("Shape closed. Click Launch Ball.");
+    }
+
+    function clearAll() {
+      state.mode = "draw";
+      state.boundary = [];
+      state.closed = false;
+      state.trace = [];
+      state.time = 0;
+      state.stalledFrames = 0;
+      setStatus("Mode: Draw. Click to add points. Double-click to close.");
+    }
+
+    function launchBall() {
+      if (!state.closed) {
+        setStatus("Close the shape before launching.");
+        return;
+      }
+      const center = getBoundaryCentroid();
+      const speed = Number(controls.speed.value);
+      const randomAngleDeg = Math.floor(Math.random() * 360);
+      controls.angle.value = String(randomAngleDeg);
+      updateLabels();
+      const angle = randomAngleDeg * Math.PI / 180;
+      state.ball.x = center.x;
+      state.ball.y = center.y;
+      state.ball.vx = Math.cos(angle) * speed;
+      state.ball.vy = Math.sin(angle) * speed;
+      state.ballSpeedTarget = speed;
+      state.stalledFrames = 0;
+      state.trace = [];
+      state.time = 0;
+      state.mode = "run";
+      setStatus(`Running. Ball reflects off edges. Initial angle=${randomAngleDeg}deg`);
+    }
+
+    function getBoundaryEdges(boundary = state.boundary) {
+      const edges = [];
+      for (let i = 0; i < boundary.length; i++) {
+        const a = boundary[i];
+        const b = boundary[(i + 1) % boundary.length];
+        edges.push({ a, b });
+      }
+      return edges;
+    }
+
+    function getBoundaryCentroid() {
+      let x = 0;
+      let y = 0;
+      state.boundary.forEach((p) => {
+        x += p.x;
+        y += p.y;
+      });
+      return { x: x / state.boundary.length, y: y / state.boundary.length };
+    }
+
+    function reflect(vx, vy, nx, ny) {
+      const dot = vx * nx + vy * ny;
+      return { vx: vx - 2 * dot * nx, vy: vy - 2 * dot * ny };
+    }
+
+    function pointInPolygon(point, polygon) {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
+        const intersect = ((yi > point.y) !== (yj > point.y)) &&
+          (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function closestPointOnSegment(p, a, b) {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const apx = p.x - a.x;
+      const apy = p.y - a.y;
+      const abLen2 = abx * abx + aby * aby || 1;
+      let t = (apx * abx + apy * aby) / abLen2;
+      t = Math.max(0, Math.min(1, t));
+      return { x: a.x + abx * t, y: a.y + aby * t, t };
+    }
+
+    function closestEdge(point, boundary = state.boundary) {
+      let best = null;
+      let bestDist2 = Infinity;
+      for (const edge of getBoundaryEdges(boundary)) {
+        const cp = closestPointOnSegment(point, edge.a, edge.b);
+        const dx = point.x - cp.x;
+        const dy = point.y - cp.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestDist2) {
+          bestDist2 = d2;
+          best = { edge, cp, d2 };
+        }
+      }
+      return best;
+    }
+
+    function segmentIntersection(p1, p2, p3, p4) {
+      const s1x = p2.x - p1.x;
+      const s1y = p2.y - p1.y;
+      const s2x = p4.x - p3.x;
+      const s2y = p4.y - p3.y;
+      const denom = (-s2x * s1y + s1x * s2y);
+      if (Math.abs(denom) < 1e-6) return null;
+      const s = (-s1y * (p1.x - p3.x) + s1x * (p1.y - p3.y)) / denom;
+      const t = ( s2x * (p1.y - p3.y) - s2y * (p1.x - p3.x)) / denom;
+      if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
+        return { t, x: p1.x + (t * s1x), y: p1.y + (t * s1y) };
+      }
+      return null;
+    }
+
+    function closestCollision(start, end, boundary = state.boundary) {
+      let hit = null;
+      let hitEdge = null;
+      for (const edge of getBoundaryEdges(boundary)) {
+        const info = segmentIntersection(start, end, edge.a, edge.b);
+        if (info && (!hit || info.t < hit.t)) {
+          hit = info;
+          hitEdge = edge;
+        }
+      }
+      if (!hit || !hitEdge) return null;
+
+      const ex = hitEdge.b.x - hitEdge.a.x;
+      const ey = hitEdge.b.y - hitEdge.a.y;
+      const len = Math.hypot(ex, ey) || 1;
+      const nx = -ey / len;
+      const ny = ex / len;
+      return { hit, nx, ny };
+    }
+
+    function orientNormalInside(hit, nx, ny, boundary) {
+      const probe = { x: hit.x + nx * 0.5, y: hit.y + ny * 0.5 };
+      if (pointInPolygon(probe, boundary)) return { nx, ny };
+      return { nx: -nx, ny: -ny };
+    }
+
+    function renormalizeVelocity(ball, targetSpeed) {
+      if (!(targetSpeed > 0)) return;
+      const v = Math.hypot(ball.vx, ball.vy);
+      if (v < 1e-9) {
+        // Keep simulation alive even in degenerate collision cases.
+        const ang = Math.random() * Math.PI * 2;
+        ball.vx = Math.cos(ang) * targetSpeed;
+        ball.vy = Math.sin(ang) * targetSpeed;
+        return;
+      }
+      const s = targetSpeed / v;
+      ball.vx *= s;
+      ball.vy *= s;
+    }
+
+    function applyLiveSpeedFromSlider() {
+      const speed = Number(controls.speed.value);
+      if (!(speed > 0)) return;
+      state.ballSpeedTarget = speed;
+      if (state.mode === "run") {
+        renormalizeVelocity(state.ball, speed);
+      }
+    }
+
+    function advanceBall(ball, boundary, dt, targetSpeed) {
+      let remaining = dt;
+      const maxBounces = 8;
+      const eps = 0.05;
+
+      for (let b = 0; b < maxBounces && remaining > 1e-6; b++) {
+        const start = { x: ball.x, y: ball.y };
+        const end = {
+          x: ball.x + ball.vx * remaining,
+          y: ball.y + ball.vy * remaining,
+        };
+
+        const collision = closestCollision(start, end, boundary);
+        if (collision) {
+          const t = Math.max(0, Math.min(1, collision.hit.t));
+          ball.x = collision.hit.x;
+          ball.y = collision.hit.y;
+
+          let { nx, ny } = orientNormalInside(collision.hit, collision.nx, collision.ny, boundary);
+          const reflected = reflect(ball.vx, ball.vy, nx, ny);
+          ball.vx = reflected.vx;
+          ball.vy = reflected.vy;
+          renormalizeVelocity(ball, targetSpeed);
+
+          const speed = Math.hypot(ball.vx, ball.vy) || 1;
+          ball.x += nx * eps + (ball.vx / speed) * eps;
+          ball.y += ny * eps + (ball.vy / speed) * eps;
+          remaining *= (1 - t);
+          continue;
+        }
+
+        if (!pointInPolygon(end, boundary)) {
+          const nearest = closestEdge(end, boundary);
+          if (nearest) {
+            const ex = nearest.edge.b.x - nearest.edge.a.x;
+            const ey = nearest.edge.b.y - nearest.edge.a.y;
+            const len = Math.hypot(ex, ey) || 1;
+            let nx = -ey / len;
+            let ny = ex / len;
+            ({ nx, ny } = orientNormalInside(nearest.cp, nx, ny, boundary));
+            const reflected = reflect(ball.vx, ball.vy, nx, ny);
+            ball.vx = reflected.vx;
+            ball.vy = reflected.vy;
+            renormalizeVelocity(ball, targetSpeed);
+            const speed = Math.hypot(ball.vx, ball.vy) || 1;
+            ball.x = nearest.cp.x + nx * eps + (ball.vx / speed) * eps;
+            ball.y = nearest.cp.y + ny * eps + (ball.vy / speed) * eps;
+            remaining *= 0.5;
+            continue;
+          }
+        }
+
+        ball.x = end.x;
+        ball.y = end.y;
+        remaining = 0;
+      }
+
+      // If a very dense corner interaction exhausted bounce iterations,
+      // still advance a tiny amount along current velocity so we do not lock.
+      if (remaining > 1e-6) {
+        const v = Math.hypot(ball.vx, ball.vy) || 1;
+        const step = Math.min(0.25, v * remaining);
+        ball.x += (ball.vx / v) * step;
+        ball.y += (ball.vy / v) * step;
+      }
+      renormalizeVelocity(ball, targetSpeed);
+    }
+
+    function step(dt) {
+      const steps = 4;
+      const sub = dt / steps;
+      let totalMoved = 0;
+      for (let i = 0; i < steps; i++) {
+        const px = state.ball.x;
+        const py = state.ball.y;
+        advanceBall(state.ball, state.boundary, sub, state.ballSpeedTarget || Number(controls.speed.value));
+        totalMoved += Math.hypot(state.ball.x - px, state.ball.y - py);
+        state.time += sub;
+        state.trace.push({ x: state.ball.x, y: state.ball.y, t: state.time });
+      }
+
+      if (totalMoved < 1e-4) {
+        state.stalledFrames += 1;
+      } else {
+        state.stalledFrames = 0;
+      }
+
+      // Anti-stall recovery if numerical edge lock persists.
+      if (state.stalledFrames > 8) {
+        const ang = Math.atan2(state.ball.vy, state.ball.vx) + (Math.random() - 0.5) * 0.08;
+        const speed = state.ballSpeedTarget || Number(controls.speed.value) || 1;
+        state.ball.vx = Math.cos(ang) * speed;
+        state.ball.vy = Math.sin(ang) * speed;
+        state.ball.x += Math.cos(ang) * 0.8;
+        state.ball.y += Math.sin(ang) * 0.8;
+        state.stalledFrames = 0;
+      }
+    }
+
+    function drawBoundary() {
+      if (state.boundary.length === 0) return;
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(state.boundary[0].x, state.boundary[0].y);
+      for (let i = 1; i < state.boundary.length; i++) {
+        ctx.lineTo(state.boundary[i].x, state.boundary[i].y);
+      }
+      if (state.closed) ctx.lineTo(state.boundary[0].x, state.boundary[0].y);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(56, 189, 248, 0.8)";
+      state.boundary.forEach((p) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawTrace() {
+      if (state.trace.length < 2) return;
+      const fadeOn = controls.traceFade.value === "on";
+      const fadeSeconds = Number(controls.fadeSeconds.value);
+      const now = state.time;
+      if (fadeOn) {
+        const cutoff = now - fadeSeconds;
+        while (state.trace.length > 0 && state.trace[0].t < cutoff) {
+          state.trace.shift();
+        }
+        if (state.trace.length < 2) return;
+      }
+      // Trace is intentionally unbounded when fade is off: no pruning.
+
+      ctx.lineWidth = Number(controls.traceWidth.value);
+      for (let i = 1; i < state.trace.length; i++) {
+        const p0 = state.trace[i - 1];
+        const p1 = state.trace[i];
+        const age0 = now - p0.t;
+        const age1 = now - p1.t;
+        const alpha0 = traceAlpha(age0, fadeOn, fadeSeconds);
+        const alpha1 = traceAlpha(age1, fadeOn, fadeSeconds);
+        const alpha = 0.5 * (alpha0 + alpha1);
+        if (alpha <= 0.01) continue;
+
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    }
+
+    function traceAlpha(age, fadeOn, fadeSeconds) {
+      if (!fadeOn) return 0.8;
+      const s = Math.max(1e-6, fadeSeconds);
+      // Smooth long-tail fade so opacity changes gradually over time.
+      const a = Math.exp(-age / s);
+      return Math.max(0, Math.min(1, a));
+    }
+
+    function drawBall() {
+      if (state.mode !== "run") return;
+      ctx.fillStyle = "rgba(245, 158, 11, 0.9)";
+      ctx.beginPath();
+      ctx.arc(state.ball.x, state.ball.y, Number(controls.radius.value), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function draw() {
+      const rect = canvas.getBoundingClientRect();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+
+      ctx.fillStyle = "rgba(10, 16, 26, 0.3)";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      drawTrace();
+      drawBoundary();
+      drawBall();
+    }
+
+    function animate() {
+      if (state.mode === "run") {
+        step(1 / 60);
+      }
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    function runTests() {
+      const results = [];
+      const approx = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+      const r1 = reflect(1, 0, 1, 0);
+      results.push(approx(r1.vx, -1) && approx(r1.vy, 0));
+      const r2 = reflect(1, 0, 0, 1);
+      results.push(approx(r2.vx, 1) && approx(r2.vy, 0));
+      const hit = segmentIntersection({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: -5 }, { x: 5, y: 5 });
+      results.push(!!hit && approx(hit.x, 5));
+      const a0 = traceAlpha(0, 1, 10);
+      const a5 = traceAlpha(5, 1, 10);
+      const a10 = traceAlpha(10, 1, 10);
+      results.push(a0 > a5 && a5 > a10 && a10 > 0);
+      results.push(approx(traceAlpha(1000, 1, 10), 0, 1e-3));
+      results.push(approx(traceAlpha(999, 0, 10), 0.8, 1e-9));
+      return results.every(Boolean);
+    }
+
+    function runAngleSweepTests() {
+      const boundary = [
+        { x: 120, y: 100 },
+        { x: 780, y: 100 },
+        { x: 780, y: 540 },
+        { x: 120, y: 540 },
+      ];
+      const speed0 = 260;
+      const dt = 1 / 120;
+      const frameCount = 600;
+      const failures = [];
+
+      for (let angleDeg = 0; angleDeg < 360; angleDeg += 2) {
+        const rad = angleDeg * Math.PI / 180;
+        const ball = {
+          x: 450,
+          y: 320,
+          vx: Math.cos(rad) * speed0,
+          vy: Math.sin(rad) * speed0,
+        };
+        let minMove = Infinity;
+        let maxSpeedError = 0;
+
+        for (let i = 0; i < frameCount; i++) {
+          const prev = { x: ball.x, y: ball.y };
+          advanceBall(ball, boundary, dt, speed0);
+          const moved = Math.hypot(ball.x - prev.x, ball.y - prev.y);
+          minMove = Math.min(minMove, moved);
+          const speed = Math.hypot(ball.vx, ball.vy);
+          maxSpeedError = Math.max(maxSpeedError, Math.abs(speed - speed0));
+        }
+
+        const nearEdge = closestEdge({ x: ball.x, y: ball.y }, boundary);
+        const outside = !pointInPolygon({ x: ball.x, y: ball.y }, boundary);
+        const farOutside = outside && (!nearEdge || nearEdge.d2 > 4);
+        const stopped = minMove < 1e-4;
+        const speedDrift = maxSpeedError > 1.5;
+        if (stopped || speedDrift || farOutside) {
+          failures.push({ angleDeg, stopped, speedDrift, farOutside });
+        }
+      }
+
+      if (failures.length > 0) {
+        console.warn("Bounce sweep failures", failures.slice(0, 15), `total=${failures.length}`);
+        setStatus(`Tests failed: ${failures.length} angle cases. See console.`);
+        return false;
+      }
+      setStatus("Bounce tests passed: all sweep angles stable.");
+      return true;
+    }
+
+    canvas.addEventListener("click", (e) => {
+      if (state.mode !== "draw") return;
+      const rect = canvas.getBoundingClientRect();
+      addPoint(e.clientX - rect.left, e.clientY - rect.top);
+    });
+
+    canvas.addEventListener("dblclick", (e) => {
+      if (state.mode !== "draw") return;
+      closeShape();
+    });
+
+    document.getElementById("modeDraw").addEventListener("click", () => {
+      state.mode = "draw";
+      state.closed = false;
+      state.boundary = [];
+      state.trace = [];
+      setStatus("Mode: Draw. Click to add points. Double-click to close.");
+    });
+
+    document.getElementById("closeShape").addEventListener("click", closeShape);
+
+    document.getElementById("launch").addEventListener("click", launchBall);
+
+    document.getElementById("clear").addEventListener("click", clearAll);
+    document.getElementById("runTestsBtn").addEventListener("click", () => {
+      const coreOk = runTests();
+      const sweepOk = runAngleSweepTests();
+      if (coreOk && sweepOk) {
+        setStatus("All tests passed.");
+      }
+    });
+
+    Object.values(controls).forEach((control) => {
+      control.addEventListener("input", updateLabels);
+    });
+    controls.speed.addEventListener("input", applyLiveSpeedFromSlider);
+
+    window.addEventListener("keydown", (e) => {
+      const isUndo = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z";
+      if (!isUndo) return;
+      if (state.mode !== "draw") return;
+      if (state.boundary.length === 0) return;
+      e.preventDefault();
+      state.boundary.pop();
+    });
+
+    window.addEventListener("resize", resize);
+
+    resize();
+    updateLabels();
+    applyLiveSpeedFromSlider();
+    const coreOk = runTests();
+    if (!coreOk) {
+      console.warn("Core geometry tests failed.");
+    }
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "arduino": {
+    "fqbn": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodem1201",
+    "baud_rate": 115200,
+    "upload_before_run": true,
+    "sketch_path": "arduino/mcp23017_sampler"
+  },
+  "mcp23017": {
+    "i2c_address": "0x20",
+    "sample_count": 1000,
+    "delay_us": 1000,
+    "progress_every_samples": 100,
+    "selected_pins": ["GPA0", "GPA1", "GPA2", "GPA3", "GPA4", "GPA5"],
+    "serial_timeout_seconds": 30,
+    "handshake_timeout_seconds": 5
+  },
+  "output": {
+    "dir": "output/mcp23017",
+    "raw_bytes_csv": "mcp23017_raw_bytes.csv",
+    "expanded_bits_csv": "mcp23017_pin_bits.csv",
+    "corr_matrix_csv": "mcp23017_corr_matrix.csv",
+    "corr_report_json": "mcp23017_corr_report.json",
+    "pins_plot_png": "mcp23017_pin_states.png",
+    "pins_plot_html": "mcp23017_pin_states.html",
+    "corr_plot_png": "mcp23017_corr_heatmap.png",
+    "corr_plot_html": "mcp23017_corr_heatmap.html"
+  }
+}

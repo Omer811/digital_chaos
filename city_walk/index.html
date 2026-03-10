@@ -1,0 +1,1170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>City Drunk Walk Lab</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=DM+Serif+Display&display=swap');
+
+    :root {
+      --bg-0: #090d14;
+      --bg-1: #111827;
+      --panel: rgba(17, 24, 39, 0.78);
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #34d399;
+      --accent-2: #38bdf8;
+      --line: rgba(148, 163, 184, 0.2);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      background: radial-gradient(1200px 900px at 8% 8%, #18212f 0%, var(--bg-0) 55%, #05070b 100%);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(300px, 360px) 1fr;
+      gap: 18px;
+      padding: 18px;
+      height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+    }
+
+    .title {
+      font-family: "DM Serif Display", serif;
+      font-size: 1.55rem;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .group {
+      border-top: 1px solid rgba(148, 163, 184, 0.15);
+      padding-top: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .control {
+      display: grid;
+      gap: 5px;
+    }
+
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    input, select, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 0.88rem;
+      padding: 8px 10px;
+    }
+
+    input[type="range"] { accent-color: var(--accent); }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .seqRows {
+      display: grid;
+      gap: 6px;
+      max-height: 180px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .seqRow {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .seqRow input {
+      min-width: 0;
+    }
+
+    .seqHeader {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      opacity: 0.9;
+      padding: 0 2px;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      background: rgba(52, 211, 153, 0.15);
+    }
+
+    button.secondary { background: rgba(56, 189, 248, 0.14); }
+    button.warn { background: rgba(245, 158, 11, 0.14); }
+
+    .status {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 10px;
+      font-size: 0.79rem;
+      color: var(--muted);
+      line-height: 1.4;
+      padding: 8px 10px;
+      background: rgba(15, 23, 42, 0.6);
+      white-space: pre-line;
+    }
+
+    .viz {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      background: linear-gradient(130deg, #0f172a 0%, #0a0f19 100%);
+    }
+
+    .viz canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .legend {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 10px;
+      padding: 8px;
+      max-width: 220px;
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .panel { max-height: 46vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div class="title">City Drunk Walk Lab</div>
+      <div class="subtitle">
+        Load real street topology for London, New York, Paris, or Berlin, then run multiple
+        PRNG-driven random walkers. Visualization is abstract only: grey streets and colored
+        traces, with no labels and no points of interest.
+      </div>
+
+      <div class="group">
+        <div class="control">
+          <label>City <span id="cityLabel">London</span></label>
+          <select id="city">
+            <option value="london">London</option>
+            <option value="new_york">New York</option>
+            <option value="manhattan">Manhattan</option>
+            <option value="paris">Paris</option>
+            <option value="berlin">Berlin</option>
+            <option value="tel_aviv">Tel Aviv</option>
+            <option value="jerusalem">Jerusalem</option>
+          </select>
+        </div>
+        <div class="buttons">
+          <button id="loadMap">Load City Graph</button>
+          <button id="runTests" class="secondary">Run Logic Tests</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="control">
+          <label>Walkers <span id="walkerCountLabel">14</span></label>
+          <input id="walkerCount" type="range" min="2" max="80" value="14" step="1" />
+        </div>
+        <div class="control">
+          <label>Walk speed (px/sec) <span id="stepsPerSecondLabel">80</span></label>
+          <input id="stepsPerSecond" type="range" min="10" max="400" value="80" step="5" />
+        </div>
+        <div class="control">
+          <label>Seed <span id="seedLabel">42</span></label>
+          <input id="seed" type="number" value="42" min="0" max="99999999" step="1" />
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="buttons">
+          <button id="startWalk">Start</button>
+          <button id="pauseWalk" class="secondary">Pause</button>
+          <button id="resetWalk" class="warn">Reset Walks</button>
+          <button id="clearTraces" class="warn">Clear Traces</button>
+          <button id="resetView" class="secondary">Reset View</button>
+          <button id="exportPng" class="secondary">Export PNG</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="buttons">
+          <button id="startRecording" class="secondary">Start Recording</button>
+          <button id="stopRecording" class="warn">Stop Recording</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="control">
+          <label>Timed Speed Sequence <span id="speedModeLabel">Off</span></label>
+          <div class="seqHeader">
+            <span>Time (sec)</span>
+            <span>Speed (px/sec)</span>
+            <span></span>
+          </div>
+          <div id="seqRows" class="seqRows"></div>
+          <div class="buttons">
+            <button id="addSeqRow" class="secondary">Add Row</button>
+            <button id="applySeq">Apply Sequence</button>
+            <button id="clearSeq" class="warn">Clear Sequence</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="status" class="status">Phase 1: load city graph.
+No graph loaded yet.</div>
+    </section>
+
+    <section class="viz" id="viz">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="traceCanvas"></canvas>
+      <canvas id="walkersCanvas"></canvas>
+      <div id="legend" class="legend">Graph: not loaded</div>
+    </section>
+  </div>
+
+  <script>
+    const cityConfigs = {
+      london: { label: "London", wikidata: "Q84", bbox: [51.286, -0.510, 51.691, 0.334] },
+      new_york: { label: "New York", wikidata: "Q60", bbox: [40.477, -74.259, 40.917, -73.700] },
+      manhattan: { label: "Manhattan", wikidata: "Q11299", bbox: [40.698, -74.020, 40.883, -73.906] },
+      paris: { label: "Paris", wikidata: "Q90", bbox: [48.815, 2.224, 48.902, 2.469] },
+      berlin: { label: "Berlin", wikidata: "Q64", bbox: [52.338, 13.088, 52.675, 13.761] },
+      tel_aviv: { label: "Tel Aviv", wikidata: "Q33935", bbox: [32.029, 34.742, 32.150, 34.854] },
+      jerusalem: { label: "Jerusalem", wikidata: "Q1218", bbox: [31.705, 35.085, 31.840, 35.280] },
+    };
+
+    const controls = {
+      city: document.getElementById("city"),
+      walkerCount: document.getElementById("walkerCount"),
+      stepsPerSecond: document.getElementById("stepsPerSecond"),
+      seed: document.getElementById("seed"),
+    };
+
+    const labels = {
+      city: document.getElementById("cityLabel"),
+      walkerCount: document.getElementById("walkerCountLabel"),
+      stepsPerSecond: document.getElementById("stepsPerSecondLabel"),
+      seed: document.getElementById("seedLabel"),
+    };
+
+    const statusEl = document.getElementById("status");
+    const legendEl = document.getElementById("legend");
+    const seqRowsEl = document.getElementById("seqRows");
+    const speedModeLabel = document.getElementById("speedModeLabel");
+
+    const baseCanvas = document.getElementById("baseCanvas");
+    const traceCanvas = document.getElementById("traceCanvas");
+    const walkersCanvas = document.getElementById("walkersCanvas");
+    const baseCtx = baseCanvas.getContext("2d");
+    const traceCtx = traceCanvas.getContext("2d");
+    const walkersCtx = walkersCanvas.getContext("2d");
+
+    const state = {
+      graph: null,
+      projection: null,
+      view: {
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+        dragging: false,
+        dragLastX: 0,
+        dragLastY: 0,
+      },
+      walkers: [],
+      running: false,
+      lastTickMs: 0,
+      rng: null,
+      tickAccumulator: 0,
+      started: false,
+      resetCounter: 0,
+      simTimeSec: 0,
+      speedSchedule: [],
+      speedScheduleEnabled: false,
+      recording: {
+        active: false,
+        canvas: null,
+        ctx: null,
+        stream: null,
+        mediaRecorder: null,
+        chunks: [],
+      },
+    };
+
+    function setStatus(txt) {
+      statusEl.textContent = txt;
+    }
+
+    function updateLabels() {
+      const city = cityConfigs[controls.city.value];
+      labels.city.textContent = city.label;
+      labels.walkerCount.textContent = controls.walkerCount.value;
+      labels.stepsPerSecond.textContent = controls.stepsPerSecond.value;
+      labels.seed.textContent = String(controls.seed.value);
+    }
+
+    function resizeCanvases() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      [baseCanvas, traceCanvas, walkersCanvas].forEach((c) => {
+        c.width = rect.width * ratio;
+        c.height = rect.height * ratio;
+      });
+      [baseCtx, traceCtx, walkersCtx].forEach((ctx) => {
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      });
+      if (state.graph) {
+        recomputeProjection();
+        redrawBase();
+        redrawAllTraces();
+        redrawWalkers();
+      }
+    }
+
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function () {
+        t += 0x6d2b79f5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function pickOne(arr, rng) {
+      return arr[Math.floor(rng() * arr.length)];
+    }
+
+    function chooseNextNode(curr, prev, neighbors, rng) {
+      if (!neighbors || neighbors.length === 0) return prev;
+      if (neighbors.length === 1) return neighbors[0];
+      const filtered = prev == null ? neighbors : neighbors.filter((n) => n !== prev);
+      const options = filtered.length > 0 ? filtered : neighbors;
+      return pickOne(options, rng);
+    }
+
+    function projectLonLat(lon, lat, p) {
+      const x = p.pad + (lon - p.minLon) / (p.maxLon - p.minLon || 1) * p.drawW;
+      const y = p.pad + (1 - (lat - p.minLat) / (p.maxLat - p.minLat || 1)) * p.drawH;
+      return { x, y };
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function walkerGeoPosition(w) {
+      const a = state.graph.nodes.get(w.from);
+      if (!w.to) return { lon: a.lon, lat: a.lat };
+      const b = state.graph.nodes.get(w.to);
+      const t = w.edgeProgress;
+      return {
+        lon: lerp(a.lon, b.lon, t),
+        lat: lerp(a.lat, b.lat, t),
+      };
+    }
+
+    function edgeLenScreen(aNode, bNode) {
+      const dx = bNode.screen.x - aNode.screen.x;
+      const dy = bNode.screen.y - aNode.screen.y;
+      return Math.hypot(dx, dy);
+    }
+
+    function worldToView(pt) {
+      return {
+        x: pt.x * state.view.zoom + state.view.panX,
+        y: pt.y * state.view.zoom + state.view.panY,
+      };
+    }
+
+    function resetView() {
+      state.view.zoom = 1;
+      state.view.panX = 0;
+      state.view.panY = 0;
+      redrawBase();
+      redrawAllTraces();
+      redrawWalkers();
+    }
+
+    function updateSpeedModeLabel() {
+      speedModeLabel.textContent = state.speedScheduleEnabled
+        ? `On (${state.speedSchedule.length} rows)`
+        : "Off";
+    }
+
+    function createSeqRow(timeSec = "", speed = "") {
+      const row = document.createElement("div");
+      row.className = "seqRow";
+      row.innerHTML = `
+        <input type="number" min="0" step="0.1" value="${timeSec}" />
+        <input type="number" min="0" step="1" value="${speed}" />
+        <button class="warn" type="button">X</button>
+      `;
+      const removeBtn = row.querySelector("button");
+      removeBtn.addEventListener("click", () => {
+        row.remove();
+      });
+      seqRowsEl.appendChild(row);
+    }
+
+    function parseSpeedSequenceFromUi() {
+      const out = [];
+      for (const row of seqRowsEl.querySelectorAll(".seqRow")) {
+        const timeInput = row.children[0];
+        const speedInput = row.children[1];
+        const t = Number(timeInput.value);
+        const s = Number(speedInput.value);
+        if (!Number.isFinite(t) || !Number.isFinite(s) || t < 0 || s < 0) continue;
+        out.push({ t, speed: s });
+      }
+      out.sort((a, b) => a.t - b.t);
+      return out;
+    }
+
+    function applySpeedSequenceFromUi() {
+      const seq = parseSpeedSequenceFromUi();
+      state.speedSchedule = seq;
+      state.speedScheduleEnabled = seq.length > 0;
+      updateSpeedModeLabel();
+      if (state.speedScheduleEnabled) {
+        setStatus(`Speed sequence applied with ${seq.length} rows.`);
+      } else {
+        setStatus("Speed sequence cleared (using slider speed).");
+      }
+    }
+
+    function clearSpeedSequence() {
+      seqRowsEl.innerHTML = "";
+      state.speedSchedule = [];
+      state.speedScheduleEnabled = false;
+      updateSpeedModeLabel();
+    }
+
+    function currentSpeedPxPerSec() {
+      if (!state.speedScheduleEnabled || state.speedSchedule.length === 0) {
+        return Number(controls.stepsPerSecond.value);
+      }
+      const t = state.simTimeSec;
+      let speed = state.speedSchedule[0].speed;
+      for (let i = 1; i < state.speedSchedule.length; i++) {
+        if (t >= state.speedSchedule[i].t) {
+          speed = state.speedSchedule[i].speed;
+        } else {
+          break;
+        }
+      }
+      return speed;
+    }
+
+    function recomputeProjection() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      const pad = 18;
+      const minLon = state.graph.bounds.minLon;
+      const maxLon = state.graph.bounds.maxLon;
+      const minLat = state.graph.bounds.minLat;
+      const maxLat = state.graph.bounds.maxLat;
+      state.projection = {
+        minLon,
+        maxLon,
+        minLat,
+        maxLat,
+        pad,
+        drawW: Math.max(10, rect.width - pad * 2),
+        drawH: Math.max(10, rect.height - pad * 2),
+      };
+      for (const node of state.graph.nodes.values()) {
+        node.screen = projectLonLat(node.lon, node.lat, state.projection);
+      }
+    }
+
+    async function fetchCityGraph(cityKey) {
+      const cfg = cityConfigs[cityKey];
+      const [south, west, north, east] = cfg.bbox;
+      const overpassByArea = `
+[out:json][timeout:120];
+area["wikidata"="${cfg.wikidata}"]["boundary"="administrative"]->.cityArea;
+(
+  way(area.cityArea)["highway"]["highway"!~"motorway|trunk|service|footway|cycleway|path|steps|pedestrian"];
+);
+(._;>;);
+out body;
+`.trim();
+
+      const overpassByBbox = `
+[out:json][timeout:25];
+(
+  way["highway"]["highway"!~"motorway|trunk|service|footway|cycleway|path|steps|pedestrian"](${south},${west},${north},${east});
+);
+(._;>;);
+out body;
+`.trim();
+
+      // Prefer full administrative city area; fallback to broad bbox if needed.
+      let response = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: overpassByArea,
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.elements?.length > 0) {
+          return buildGraphFromOverpass(data);
+        }
+      }
+
+      response = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: overpassByBbox,
+      });
+      if (!response.ok) {
+        throw new Error(`Overpass error ${response.status}`);
+      }
+      const fallbackData = await response.json();
+      return buildGraphFromOverpass(fallbackData);
+    }
+
+    function buildGraphFromOverpass(data) {
+      const nodes = new Map();
+      const adj = new Map();
+      const ways = [];
+
+      for (const e of data.elements || []) {
+        if (e.type === "node") {
+          nodes.set(e.id, { id: e.id, lat: e.lat, lon: e.lon, screen: null });
+          adj.set(e.id, new Set());
+        }
+      }
+
+      for (const e of data.elements || []) {
+        if (e.type !== "way" || !Array.isArray(e.nodes) || e.nodes.length < 2) continue;
+        ways.push(e.nodes);
+        for (let i = 0; i < e.nodes.length - 1; i++) {
+          const a = e.nodes[i];
+          const b = e.nodes[i + 1];
+          if (!adj.has(a) || !adj.has(b)) continue;
+          adj.get(a).add(b);
+          adj.get(b).add(a);
+        }
+      }
+
+      const filteredNodeIds = [...adj.keys()].filter((id) => adj.get(id).size > 0);
+      const filteredSet = new Set(filteredNodeIds);
+
+      const prunedWays = ways
+        .map((w) => w.filter((id) => filteredSet.has(id)))
+        .filter((w) => w.length >= 2);
+
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+      for (const id of filteredNodeIds) {
+        const n = nodes.get(id);
+        minLat = Math.min(minLat, n.lat);
+        maxLat = Math.max(maxLat, n.lat);
+        minLon = Math.min(minLon, n.lon);
+        maxLon = Math.max(maxLon, n.lon);
+      }
+
+      return {
+        nodes,
+        adj,
+        nodeIds: filteredNodeIds,
+        ways: prunedWays,
+        bounds: { minLat, maxLat, minLon, maxLon },
+      };
+    }
+
+    function redrawBase() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      baseCtx.clearRect(0, 0, rect.width, rect.height);
+      baseCtx.fillStyle = "rgba(9, 12, 20, 0.6)";
+      baseCtx.fillRect(0, 0, rect.width, rect.height);
+
+      baseCtx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+      baseCtx.lineWidth = 1;
+      for (const way of state.graph.ways) {
+        const n0 = state.graph.nodes.get(way[0]);
+        if (!n0 || !n0.screen) continue;
+        const p0 = worldToView(n0.screen);
+        baseCtx.beginPath();
+        baseCtx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < way.length; i++) {
+          const n = state.graph.nodes.get(way[i]);
+          if (!n || !n.screen) continue;
+          const p = worldToView(n.screen);
+          baseCtx.lineTo(p.x, p.y);
+        }
+        baseCtx.stroke();
+      }
+    }
+
+    function walkerColor(i) {
+      const hue = (i * 137.508) % 360;
+      return `hsl(${hue} 85% 58%)`;
+    }
+
+    function seedWithOffset(offset = 0) {
+      const base = (Number(controls.seed.value) || 42) >>> 0;
+      const mixed = (base + ((offset * 9973) >>> 0)) >>> 0;
+      state.rng = mulberry32(mixed);
+    }
+
+    function shuffledCopy(arr, rng) {
+      const out = [...arr];
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+      return out;
+    }
+
+    function visibleStartNodeIds(starts) {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      return starts.filter((id) => {
+        const n = state.graph.nodes.get(id);
+        if (!n || !n.screen) return false;
+        const p = worldToView(n.screen);
+        return p.x >= 0 && p.x <= rect.width && p.y >= 0 && p.y <= rect.height;
+      });
+    }
+
+    function createWalkers(opts = {}) {
+      if (!state.graph) return;
+      if (!state.rng) {
+        seedWithOffset(state.resetCounter);
+      }
+      const rng = state.rng;
+      const candidateStarts = state.graph.nodeIds.filter((id) => state.graph.adj.get(id).size >= 2);
+      const starts = candidateStarts.length > 0 ? candidateStarts : state.graph.nodeIds;
+      const visibleOnly = !!opts.visibleOnly;
+      const visibleStarts = visibleOnly ? visibleStartNodeIds(starts) : [];
+      const startPool = visibleOnly && visibleStarts.length > 0 ? visibleStarts : starts;
+      const shuffledPool = shuffledCopy(startPool, rng);
+      const count = Number(controls.walkerCount.value);
+      state.walkers = [];
+
+      for (let i = 0; i < count; i++) {
+        const node = i < shuffledPool.length ? shuffledPool[i] : pickOne(startPool, rng);
+        state.walkers.push({
+          id: i,
+          from: node,
+          to: null,
+          edgeProgress: 0,
+          prev: null,
+          color: walkerColor(i),
+          trace: [{ lon: state.graph.nodes.get(node).lon, lat: state.graph.nodes.get(node).lat }],
+        });
+      }
+      clearTraceLayer();
+      redrawWalkers();
+      legendEl.textContent = `Graph loaded\nNodes: ${state.graph.nodeIds.length}\nWalkers: ${state.walkers.length}`;
+      if (visibleOnly) {
+        const roiCount = visibleStarts.length;
+        setStatus(
+          roiCount > 0
+            ? `Walkers reset in visible ROI.\nVisible candidate nodes: ${roiCount}\nWalkers: ${state.walkers.length}`
+            : `Visible ROI had no valid junctions.\nFallback: full map starts used.\nWalkers: ${state.walkers.length}`
+        );
+      }
+    }
+
+    function clearTraceLayer() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      traceCtx.clearRect(0, 0, rect.width, rect.height);
+    }
+
+    function redrawAllTraces() {
+      clearTraceLayer();
+      for (const w of state.walkers) {
+        if (!w.trace || w.trace.length < 2) continue;
+        traceCtx.strokeStyle = w.color;
+        traceCtx.lineWidth = 1.6;
+        traceCtx.beginPath();
+        const p0w = projectLonLat(w.trace[0].lon, w.trace[0].lat, state.projection);
+        const p0 = worldToView(p0w);
+        traceCtx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < w.trace.length; i++) {
+          const pw = projectLonLat(w.trace[i].lon, w.trace[i].lat, state.projection);
+          const p = worldToView(pw);
+          traceCtx.lineTo(p.x, p.y);
+        }
+        traceCtx.stroke();
+      }
+    }
+
+    function drawTraceSegment(walker, fromGeo, toGeo) {
+      const aWorld = projectLonLat(fromGeo.lon, fromGeo.lat, state.projection);
+      const bWorld = projectLonLat(toGeo.lon, toGeo.lat, state.projection);
+      const pa = worldToView(aWorld);
+      const pb = worldToView(bWorld);
+      traceCtx.strokeStyle = walker.color;
+      traceCtx.lineWidth = 1.6;
+      traceCtx.beginPath();
+      traceCtx.moveTo(pa.x, pa.y);
+      traceCtx.lineTo(pb.x, pb.y);
+      traceCtx.stroke();
+    }
+
+    function redrawWalkers() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      walkersCtx.clearRect(0, 0, rect.width, rect.height);
+      for (const w of state.walkers) {
+        const geo = walkerGeoPosition(w);
+        const world = projectLonLat(geo.lon, geo.lat, state.projection);
+        const p = worldToView(world);
+        walkersCtx.fillStyle = w.color;
+        walkersCtx.beginPath();
+        walkersCtx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        walkersCtx.fill();
+      }
+    }
+
+    function advanceWalkers(dt) {
+      if (!state.graph || state.walkers.length === 0) return;
+      const speed = currentSpeedPxPerSec();
+      for (const w of state.walkers) {
+        let budget = speed * dt;
+        let guard = 0;
+        while (budget > 1e-6 && guard < 32) {
+          guard += 1;
+          if (!w.to) {
+            const neighbors = [...state.graph.adj.get(w.from)];
+            if (neighbors.length === 0) break;
+            const next = chooseNextNode(w.from, w.prev, neighbors, state.rng);
+            w.to = next;
+            w.edgeProgress = 0;
+          }
+
+          const a = state.graph.nodes.get(w.from);
+          const b = state.graph.nodes.get(w.to);
+          const len = Math.max(1e-6, edgeLenScreen(a, b));
+          const remainFrac = 1 - w.edgeProgress;
+          const remainDist = len * remainFrac;
+          const stepDist = Math.min(budget, remainDist);
+          const deltaFrac = stepDist / len;
+
+          const prevGeo = walkerGeoPosition(w);
+          w.edgeProgress = Math.min(1, w.edgeProgress + deltaFrac);
+          const newGeo = walkerGeoPosition(w);
+          w.trace.push(newGeo);
+          drawTraceSegment(w, prevGeo, newGeo);
+          budget -= stepDist;
+
+          if (w.edgeProgress >= 1 - 1e-9) {
+            w.prev = w.from;
+            w.from = w.to;
+            w.to = null;
+            w.edgeProgress = 0;
+          }
+        }
+      }
+      redrawWalkers();
+    }
+
+    function loop(ts) {
+      if (!state.lastTickMs) state.lastTickMs = ts;
+      const dt = (ts - state.lastTickMs) / 1000;
+      state.lastTickMs = ts;
+
+      if (state.running && state.graph && state.walkers.length > 0) {
+        state.simTimeSec += dt;
+        advanceWalkers(dt);
+      }
+
+      if (state.recording.active) {
+        drawRecordingFrame();
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    function resetWalks() {
+      if (!state.graph) return;
+      state.resetCounter += 1;
+      seedWithOffset(state.resetCounter);
+      createWalkers({ visibleOnly: true });
+      state.started = true;
+      state.simTimeSec = 0;
+    }
+
+    async function loadCity() {
+      const cityKey = controls.city.value;
+      const label = cityConfigs[cityKey].label;
+      state.running = false;
+      state.started = false;
+      setStatus(`Phase 1: loading full ${label} street graph from OpenStreetMap...\nThis can take a while for large cities.`);
+      try {
+        const graph = await fetchCityGraph(cityKey);
+        if (!graph || graph.nodeIds.length < 20) {
+          throw new Error("Graph too small for walk simulation");
+        }
+        state.graph = graph;
+        state.resetCounter = 0;
+        state.simTimeSec = 0;
+        seedWithOffset(0);
+        recomputeProjection();
+        resetView();
+        redrawBase();
+        createWalkers();
+        setStatus(
+          `Phase 1 complete for ${label}.\n` +
+          `Nodes: ${graph.nodeIds.length}\n` +
+          `Edges: ${graph.ways.length}\n` +
+          `Phase 2 ready: start simulation.\n` +
+          `Display is abstract only (no labels/POIs).`
+        );
+      } catch (err) {
+        setStatus(`Load failed for ${label}: ${err.message}`);
+      }
+    }
+
+    function runLogicTests() {
+      const rngA = mulberry32(123);
+      const rngB = mulberry32(123);
+      const seqA = [rngA(), rngA(), rngA(), rngA()];
+      const seqB = [rngB(), rngB(), rngB(), rngB()];
+      const deterministic = seqA.every((v, i) => Math.abs(v - seqB[i]) < 1e-12);
+
+      const noBack = chooseNextNode(3, 1, [1, 2, 7], mulberry32(7)) !== 1;
+      const deadEndBack = chooseNextNode(5, 2, [2], mulberry32(9)) === 2;
+      const noNeighbor = chooseNextNode(4, 9, [], mulberry32(11)) === 9;
+      const seedFnExists = typeof seedWithOffset === "function";
+
+      const graphFixture = {
+        elements: [
+          { type: "node", id: 1, lat: 10.0, lon: 20.0 },
+          { type: "node", id: 2, lat: 10.1, lon: 20.0 },
+          { type: "node", id: 3, lat: 10.1, lon: 20.2 },
+          { type: "way", id: 100, nodes: [1, 2, 3] },
+        ],
+      };
+      let graphSmoke = false;
+      try {
+        const g = buildGraphFromOverpass(graphFixture);
+        graphSmoke = !!g && g.nodeIds.length >= 3 && g.ways.length >= 1;
+      } catch (_) {
+        graphSmoke = false;
+      }
+
+      const ok = deterministic && noBack && deadEndBack && noNeighbor && seedFnExists && graphSmoke;
+      if (!ok) {
+        setStatus(
+          `Logic tests failed:\n` +
+          `deterministic=${deterministic}\n` +
+          `noBack=${noBack}\n` +
+          `deadEndBack=${deadEndBack}\n` +
+          `noNeighbor=${noNeighbor}\n` +
+          `seedFnExists=${seedFnExists}\n` +
+          `graphSmoke=${graphSmoke}`
+        );
+        return;
+      }
+      setStatus("Logic tests passed. PRNG, junction-selection, and graph-load smoke checks are consistent.");
+    }
+
+    function exportMapWithTracesPng() {
+      if (!state.graph) {
+        setStatus("Load a city graph before exporting.");
+        return;
+      }
+      const out = document.createElement("canvas");
+      out.width = baseCanvas.width;
+      out.height = baseCanvas.height;
+      const octx = out.getContext("2d", { alpha: true });
+      if (!octx) {
+        setStatus("Export failed: 2D context unavailable.");
+        return;
+      }
+      octx.imageSmoothingEnabled = true;
+      // Preserve exact visual stack order from the live app.
+      octx.drawImage(baseCanvas, 0, 0, out.width, out.height);
+      octx.drawImage(traceCanvas, 0, 0, out.width, out.height);
+      octx.drawImage(walkersCanvas, 0, 0, out.width, out.height);
+
+      out.toBlob((blob) => {
+        if (!blob) {
+          setStatus("Export failed: could not encode PNG.");
+          return;
+        }
+        const city = cityConfigs[controls.city.value].label.toLowerCase().replace(/\\s+/g, "_");
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `city_walk_${city}_${stamp}.png`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatus(`Exported PNG: ${filename}`);
+      }, "image/png");
+    }
+
+    function recordingFilename(ext = "webm") {
+      const city = cityConfigs[controls.city.value].label.toLowerCase().replace(/\\s+/g, "_");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      return `city_walk_${city}_${stamp}.${ext}`;
+    }
+
+    function ensureRecordingCanvas() {
+      const rect = document.getElementById("viz").getBoundingClientRect();
+      if (!state.recording.canvas) {
+        state.recording.canvas = document.createElement("canvas");
+        state.recording.ctx = state.recording.canvas.getContext("2d", { alpha: false });
+      }
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(rect.width * ratio));
+      const height = Math.max(1, Math.round(rect.height * ratio));
+      if (state.recording.canvas.width !== width || state.recording.canvas.height !== height) {
+        state.recording.canvas.width = width;
+        state.recording.canvas.height = height;
+      }
+    }
+
+    function drawRecordingFrame() {
+      if (!state.recording.active || !state.recording.ctx || !state.recording.canvas) return;
+      const ctx = state.recording.ctx;
+      const width = state.recording.canvas.width;
+      const height = state.recording.canvas.height;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(baseCanvas, 0, 0, width, height);
+      ctx.drawImage(traceCanvas, 0, 0, width, height);
+      ctx.drawImage(walkersCanvas, 0, 0, width, height);
+    }
+
+    function startRecording() {
+      if (state.recording.active) {
+        setStatus("Recording is already active.");
+        return;
+      }
+      if (typeof MediaRecorder === "undefined") {
+        setStatus("Recording not supported in this browser (MediaRecorder missing).");
+        return;
+      }
+      ensureRecordingCanvas();
+      drawRecordingFrame();
+      try {
+        state.recording.stream = state.recording.canvas.captureStream(30);
+        state.recording.mediaRecorder = new MediaRecorder(state.recording.stream, {
+          mimeType: "video/webm;codecs=vp9",
+        });
+      } catch (_) {
+        try {
+          state.recording.mediaRecorder = new MediaRecorder(state.recording.canvas.captureStream(30));
+          state.recording.stream = state.recording.mediaRecorder.stream;
+        } catch (err) {
+          setStatus(`Recording start failed: ${err.message}`);
+          return;
+        }
+      }
+
+      state.recording.chunks = [];
+      state.recording.mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) state.recording.chunks.push(e.data);
+      };
+      state.recording.mediaRecorder.onstop = () => {
+        const blob = new Blob(state.recording.chunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = recordingFilename("webm");
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        if (state.recording.stream) {
+          for (const track of state.recording.stream.getTracks()) track.stop();
+        }
+        state.recording.stream = null;
+        state.recording.mediaRecorder = null;
+        state.recording.chunks = [];
+        state.recording.active = false;
+        setStatus("Recording stopped and exported (WebM).");
+      };
+      state.recording.mediaRecorder.start(1000);
+      state.recording.active = true;
+      setStatus("Recording started (current visible ROI).");
+    }
+
+    function stopRecording() {
+      if (!state.recording.active || !state.recording.mediaRecorder) {
+        setStatus("Recording is not active.");
+        return;
+      }
+      state.recording.mediaRecorder.stop();
+    }
+
+    document.getElementById("loadMap").addEventListener("click", loadCity);
+
+    document.getElementById("startWalk").addEventListener("click", () => {
+      if (!state.graph) {
+        setStatus("Load a city graph first.");
+        return;
+      }
+      if (!state.started && state.walkers.length === 0) {
+        createWalkers();
+      }
+      state.started = true;
+      state.running = true;
+      setStatus("Phase 3 running: random walkers active.");
+    });
+
+    document.getElementById("pauseWalk").addEventListener("click", () => {
+      state.running = !state.running;
+      setStatus(state.running ? "Resumed." : "Paused.");
+    });
+
+    document.getElementById("resetWalk").addEventListener("click", resetWalks);
+
+    document.getElementById("clearTraces").addEventListener("click", () => {
+      clearTraceLayer();
+      for (const w of state.walkers) {
+        const geo = walkerGeoPosition(w);
+        w.trace = [geo];
+      }
+      setStatus("Traces cleared, walkers kept at current nodes.");
+    });
+    document.getElementById("exportPng").addEventListener("click", exportMapWithTracesPng);
+    document.getElementById("startRecording").addEventListener("click", startRecording);
+    document.getElementById("stopRecording").addEventListener("click", stopRecording);
+    document.getElementById("addSeqRow").addEventListener("click", () => createSeqRow());
+    document.getElementById("applySeq").addEventListener("click", applySpeedSequenceFromUi);
+    document.getElementById("clearSeq").addEventListener("click", () => {
+      clearSpeedSequence();
+      setStatus("Speed sequence cleared.");
+    });
+
+    document.getElementById("resetView").addEventListener("click", () => {
+      if (!state.graph) return;
+      resetView();
+      setStatus("View reset.");
+    });
+
+    document.getElementById("runTests").addEventListener("click", runLogicTests);
+
+    Object.values(controls).forEach((el) => {
+      el.addEventListener("input", updateLabels);
+    });
+
+    walkersCanvas.addEventListener("mousedown", (e) => {
+      state.view.dragging = true;
+      state.view.dragLastX = e.clientX;
+      state.view.dragLastY = e.clientY;
+    });
+
+    window.addEventListener("mouseup", () => {
+      state.view.dragging = false;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!state.view.dragging || !state.graph) return;
+      const dx = e.clientX - state.view.dragLastX;
+      const dy = e.clientY - state.view.dragLastY;
+      state.view.dragLastX = e.clientX;
+      state.view.dragLastY = e.clientY;
+      state.view.panX += dx;
+      state.view.panY += dy;
+      redrawBase();
+      redrawAllTraces();
+      redrawWalkers();
+    });
+
+    walkersCanvas.addEventListener(
+      "wheel",
+      (e) => {
+        if (!state.graph) return;
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          const rect = walkersCanvas.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const oldZoom = state.view.zoom;
+          const zoomFactor = Math.exp(-e.deltaY * 0.0015);
+          const newZoom = Math.max(0.2, Math.min(8, oldZoom * zoomFactor));
+          state.view.zoom = newZoom;
+          const scale = newZoom / oldZoom;
+          state.view.panX = mx - (mx - state.view.panX) * scale;
+          state.view.panY = my - (my - state.view.panY) * scale;
+        } else {
+          // Trackpad/mouse wheel scroll pans the map.
+          state.view.panX -= e.deltaX;
+          state.view.panY -= e.deltaY;
+        }
+        redrawBase();
+        redrawAllTraces();
+        redrawWalkers();
+      },
+      { passive: false }
+    );
+
+    window.addEventListener("resize", resizeCanvases);
+
+    createSeqRow(0, 80);
+    createSeqRow(20, 180);
+    updateSpeedModeLabel();
+    updateLabels();
+    resizeCanvases();
+    runLogicTests();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

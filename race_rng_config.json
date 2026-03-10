@@ -1,0 +1,23 @@
+{
+  "arduino": {
+    "fqbn": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodem1201",
+    "baud_rate": 115200,
+    "upload_before_run": true,
+    "sketch_path": "arduino/race_rng"
+  },
+  "method": {
+    "name": "race_rng",
+    "byte_count": 128,
+    "progress_every_bytes": 16,
+    "serial_timeout_seconds": 30,
+    "handshake_timeout_seconds": 5
+  },
+  "output": {
+    "dir": "output/race_rng",
+    "csv": "race_rng_bytes.csv",
+    "report_json": "race_rng_report.json",
+    "plot_png": "race_rng_2d.png",
+    "plot_html": "race_rng_2d.html"
+  }
+}

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>London Metro Timeline Hotspots</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5e7eb; }
+    .app { display: grid; grid-template-columns: 360px 1fr; gap: 12px; height: 100vh; padding: 12px; }
+    .panel { border: 1px solid #334155; border-radius: 12px; padding: 10px; background: #0f172a; overflow: auto; }
+    .viz { border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+    .row { display: grid; gap: 6px; margin-bottom: 10px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    input, button { width: 100%; background: #111827; color: #e5e7eb; border: 1px solid #475569; border-radius: 8px; padding: 8px; }
+    button { cursor: pointer; font-weight: 600; }
+    .buttons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    #status { white-space: pre-line; color: #94a3b8; font-size: 12px; border: 1px solid #334155; padding: 8px; border-radius: 8px; }
+    @media (max-width: 980px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div class="row">
+        <label>Timeline JSON URL</label>
+        <input id="jsonUrl" value="output/london_metro_3d/live_smoke/timeline_data.json" />
+      </div>
+      <div class="row2">
+        <button id="loadFromUrl">Load URL</button>
+        <input id="jsonFile" type="file" accept="application/json" />
+      </div>
+
+      <div class="row2">
+        <div class="row">
+          <label>Start Snapshot</label>
+          <input id="startSnap" type="number" value="0" min="0" step="1" />
+        </div>
+        <div class="row">
+          <label>End Snapshot</label>
+          <input id="endSnap" type="number" value="0" min="0" step="1" />
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="row">
+          <label>Snapshot Step</label>
+          <input id="stepSnap" type="number" value="1" min="1" step="1" />
+        </div>
+        <div class="row">
+          <label>FPS</label>
+          <input id="fps" type="number" value="20" min="1" step="1" />
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="row">
+          <label>Lon Bins</label>
+          <input id="lonBins" type="number" value="28" min="4" step="1" />
+        </div>
+        <div class="row">
+          <label>Lat Bins</label>
+          <input id="latBins" type="number" value="28" min="4" step="1" />
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="row">
+          <label>Time Bin Size</label>
+          <input id="timeBin" type="number" value="1" min="1" step="1" />
+        </div>
+        <div class="row">
+          <label>Hotspot Min Count</label>
+          <input id="hotspotMin" type="number" value="2" min="1" step="1" />
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="playBtn">Play</button>
+        <button id="pauseBtn">Pause</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="row">
+        <label>Current Snapshot</label>
+        <input id="scrub" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+
+      <div id="status">Load timeline data to start.</div>
+    </section>
+
+    <section class="viz">
+      <div id="plot" style="width:100%;height:100%;"></div>
+    </section>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const state = {
+      payload: null,
+      pointsBySnap: new Map(),
+      currentSnap: 0,
+      timer: null,
+      hotspotCounts: new Map(),
+      lonMin: 0,
+      lonMax: 0,
+      latMin: 0,
+      latMax: 0,
+      initialized: false,
+    };
+
+    function setStatus(msg) {
+      el('status').textContent = msg;
+    }
+
+    function lineColor(lineId) {
+      const m = {
+        'bakerloo': '#B36305','central': '#E32017','circle': '#FFD300','district': '#00782A','hammersmith-city': '#F3A9BB',
+        'jubilee': '#A0A5A9','metropolitan': '#9B0056','northern': '#d1d5db','piccadilly': '#003688','victoria': '#0098D4','waterloo-city': '#95CDBA'
+      };
+      return m[lineId] || '#34d399';
+    }
+
+    function groupPointsBySnapshot(points) {
+      const m = new Map();
+      for (const p of points) {
+        if (!m.has(p.snapshot_idx)) m.set(p.snapshot_idx, []);
+        m.get(p.snapshot_idx).push(p);
+      }
+      return m;
+    }
+
+    function setupRanges(points) {
+      const lons = points.map(p => p.lon);
+      const lats = points.map(p => p.lat);
+      state.lonMin = Math.min(...lons);
+      state.lonMax = Math.max(...lons);
+      state.latMin = Math.min(...lats);
+      state.latMax = Math.max(...lats);
+    }
+
+    function binIndex(v, vMin, vMax, bins) {
+      if (vMax <= vMin) return 0;
+      let i = Math.floor((v - vMin) / (vMax - vMin) * bins);
+      if (i < 0) i = 0;
+      if (i >= bins) i = bins - 1;
+      return i;
+    }
+
+    function binCenter(i, vMin, vMax, bins) {
+      const a = vMin + (i / bins) * (vMax - vMin);
+      const b = vMin + ((i + 1) / bins) * (vMax - vMin);
+      return (a + b) / 2;
+    }
+
+    function resetHotspots() {
+      state.hotspotCounts.clear();
+    }
+
+    function addSnapshotToHotspots(snapshotIdx) {
+      const pts = state.pointsBySnap.get(snapshotIdx) || [];
+      const lonBins = Math.max(4, Number(el('lonBins').value));
+      const latBins = Math.max(4, Number(el('latBins').value));
+      const timeBin = Math.max(1, Number(el('timeBin').value));
+      for (const p of pts) {
+        const i = binIndex(p.lon, state.lonMin, state.lonMax, lonBins);
+        const j = binIndex(p.lat, state.latMin, state.latMax, latBins);
+        const k = Math.floor((snapshotIdx - Number(el('startSnap').value)) / timeBin);
+        const key = `${i}|${j}|${k}`;
+        state.hotspotCounts.set(key, (state.hotspotCounts.get(key) || 0) + 1);
+      }
+    }
+
+    function hotspotScatter() {
+      const lonBins = Math.max(4, Number(el('lonBins').value));
+      const latBins = Math.max(4, Number(el('latBins').value));
+      const timeBin = Math.max(1, Number(el('timeBin').value));
+      const hotspotMin = Math.max(1, Number(el('hotspotMin').value));
+      const xs = [], ys = [], zs = [], cs = [], sz = [];
+      for (const [key, count] of state.hotspotCounts.entries()) {
+        if (count < hotspotMin) continue;
+        const [iStr, jStr, kStr] = key.split('|');
+        const i = Number(iStr), j = Number(jStr), k = Number(kStr);
+        xs.push(binCenter(i, state.lonMin, state.lonMax, lonBins));
+        ys.push(binCenter(j, state.latMin, state.latMax, latBins));
+        zs.push(Number(el('startSnap').value) + k * timeBin);
+        cs.push(count);
+        sz.push(Math.min(16, 3 + Math.log2(count + 1) * 2));
+      }
+      return {
+        x: xs, y: ys, z: zs, c: cs, s: sz,
+      };
+    }
+
+    function networkTrace(edges) {
+      const x = [], y = [], z = [];
+      for (const e of edges) {
+        x.push(e.lon1, e.lon2, null);
+        y.push(e.lat1, e.lat2, null);
+        z.push(0, 0, null);
+      }
+      return {
+        type: 'scatter3d', mode: 'lines', name: 'Network',
+        x, y, z, line: { color: '#64748b', width: 2 }, opacity: 0.35,
+      };
+    }
+
+    function trainsTrace(snapshotIdx) {
+      const pts = state.pointsBySnap.get(snapshotIdx) || [];
+      return {
+        type: 'scatter3d', mode: 'markers', name: `Trains @ ${snapshotIdx}`,
+        x: pts.map(p => p.lon), y: pts.map(p => p.lat), z: pts.map(_ => snapshotIdx),
+        marker: { size: 5, color: pts.map(p => lineColor(p.line_id)), opacity: 0.95 },
+        text: pts.map(p => `${p.line_id} | ${p.vehicle_id} | ${p.station_name}`),
+        hovertemplate: '%{text}<extra></extra>',
+      };
+    }
+
+    function hotspotsTrace() {
+      const h = hotspotScatter();
+      return {
+        type: 'scatter3d', mode: 'markers', name: 'Hotspots (cumulative)',
+        x: h.x, y: h.y, z: h.z,
+        marker: {
+          size: h.s,
+          color: h.c,
+          colorscale: 'Turbo',
+          opacity: 0.75,
+          colorbar: { title: 'Passes' },
+        },
+        hovertemplate: 'passes=%{marker.color}<br>lon=%{x:.4f}<br>lat=%{y:.4f}<br>snapshot bin=%{z}<extra></extra>',
+      };
+    }
+
+    function renderFrame() {
+      if (!state.payload) return;
+      const data = [
+        networkTrace(state.payload.edges),
+        trainsTrace(state.currentSnap),
+        hotspotsTrace(),
+      ];
+      const layout = {
+        template: 'plotly_dark',
+        margin: { l: 0, r: 0, t: 40, b: 0 },
+        title: `London Metro Timeline | snapshot=${state.currentSnap}`,
+        scene: {
+          xaxis: { title: 'Longitude' },
+          yaxis: { title: 'Latitude' },
+          zaxis: { title: 'Timeline (snapshot)' },
+        },
+      };
+      Plotly.react('plot', data, layout, { responsive: true });
+      el('scrub').value = String(state.currentSnap);
+      setStatus(`Loaded points: ${state.payload.meta.point_count}\nCurrent snapshot: ${state.currentSnap}\nHotspot bins: ${state.hotspotCounts.size}`);
+    }
+
+    function stopTimer() {
+      if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+      }
+    }
+
+    function play() {
+      if (!state.payload) return;
+      stopTimer();
+      const fps = Math.max(1, Number(el('fps').value));
+      const step = Math.max(1, Number(el('stepSnap').value));
+      const endSnap = Number(el('endSnap').value);
+      state.timer = setInterval(() => {
+        const nextSnap = state.currentSnap + step;
+        for (let s = state.currentSnap + 1; s <= Math.min(nextSnap, endSnap); s++) addSnapshotToHotspots(s);
+        state.currentSnap = Math.min(nextSnap, endSnap);
+        renderFrame();
+        if (state.currentSnap >= endSnap) stopTimer();
+      }, Math.round(1000 / fps));
+    }
+
+    function pause() {
+      stopTimer();
+    }
+
+    function resetTimeline() {
+      if (!state.payload) return;
+      stopTimer();
+      state.currentSnap = Number(el('startSnap').value);
+      resetHotspots();
+      addSnapshotToHotspots(state.currentSnap);
+      renderFrame();
+    }
+
+    function applyLoadedPayload(payload) {
+      state.payload = payload;
+      state.pointsBySnap = groupPointsBySnapshot(payload.points);
+      setupRanges(payload.points);
+      const minS = payload.meta.snapshot_min;
+      const maxS = payload.meta.snapshot_max;
+      el('startSnap').value = String(minS);
+      el('endSnap').value = String(maxS);
+      el('scrub').min = String(minS);
+      el('scrub').max = String(maxS);
+      state.currentSnap = minS;
+      resetHotspots();
+      addSnapshotToHotspots(state.currentSnap);
+      renderFrame();
+      state.initialized = true;
+    }
+
+    async function loadFromUrl() {
+      const url = el('jsonUrl').value.trim();
+      if (!url) return;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const payload = await r.json();
+        applyLoadedPayload(payload);
+      } catch (e) {
+        setStatus(`Failed to load URL. If using local files, run a local server.\nError: ${e.message}`);
+      }
+    }
+
+    function loadFromFile(file) {
+      const fr = new FileReader();
+      fr.onload = () => {
+        try {
+          const payload = JSON.parse(String(fr.result));
+          applyLoadedPayload(payload);
+        } catch (e) {
+          setStatus(`Invalid JSON file: ${e.message}`);
+        }
+      };
+      fr.readAsText(file);
+    }
+
+    el('loadFromUrl').addEventListener('click', loadFromUrl);
+    el('jsonFile').addEventListener('change', (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (file) loadFromFile(file);
+    });
+    el('playBtn').addEventListener('click', play);
+    el('pauseBtn').addEventListener('click', pause);
+    el('resetBtn').addEventListener('click', resetTimeline);
+    el('scrub').addEventListener('input', () => {
+      if (!state.payload) return;
+      stopTimer();
+      const target = Number(el('scrub').value);
+      const start = Number(el('startSnap').value);
+      resetHotspots();
+      for (let s = start; s <= target; s++) addSnapshotToHotspots(s);
+      state.currentSnap = target;
+      renderFrame();
+    });
+  </script>
+</body>
+</html>

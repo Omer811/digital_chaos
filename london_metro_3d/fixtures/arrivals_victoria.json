@@ -1,0 +1,41 @@
+[
+  {
+    "id": "a1",
+    "vehicleId": "v101",
+    "naptanId": "940GZZLUOXF",
+    "stationName": "Oxford Circus Underground Station",
+    "lineId": "victoria",
+    "lineName": "Victoria",
+    "platformName": "Northbound - Platform 1",
+    "direction": "inbound",
+    "destinationName": "Brixton",
+    "timeToStation": 45,
+    "expectedArrival": "2026-03-10T12:00:45Z"
+  },
+  {
+    "id": "a2",
+    "vehicleId": "v101",
+    "naptanId": "940GZZLUGPK",
+    "stationName": "Green Park Underground Station",
+    "lineId": "victoria",
+    "lineName": "Victoria",
+    "platformName": "Northbound - Platform 2",
+    "direction": "inbound",
+    "destinationName": "Brixton",
+    "timeToStation": 120,
+    "expectedArrival": "2026-03-10T12:02:00Z"
+  },
+  {
+    "id": "a3",
+    "vehicleId": "v202",
+    "naptanId": "940GZZLUVIC",
+    "stationName": "Victoria Underground Station",
+    "lineId": "victoria",
+    "lineName": "Victoria",
+    "platformName": "Southbound - Platform 1",
+    "direction": "outbound",
+    "destinationName": "Walthamstow Central",
+    "timeToStation": 80,
+    "expectedArrival": "2026-03-10T12:01:20Z"
+  }
+]

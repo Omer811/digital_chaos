@@ -1,0 +1,37 @@
+{
+  "tag": "json_run",
+  "output_dir": "output/sine_feedback/json_run",
+  "fqbn": "arduino:avr:uno",
+  "port": "/dev/cu.usbmodem1201",
+  "baud_rate": 115200,
+  "upload": true,
+  "sketch_path": "arduino/sine_feedback",
+
+  "samples_per_slice": 100,
+  "buffer_samples": 0,
+  "time_slices": 100,
+  "max_samples": null,
+  "periods_per_signal": 1.0,
+  "seed_waveforms": ["sine", "square", "random_noise"],
+  "random_noise_seed": 42,
+
+  "stop_when_decay": false,
+  "decay_threshold_norm": 0.1,
+  "decay_metric": "mean",
+  "min_slices_before_decay_check": 1,
+
+  "pwm_pin": 9,
+  "analog_pin": 0,
+  "settle_us": 2000,
+  "oversample_count": 16,
+  "oversample_delay_us": 50,
+  "alpha_permille": 0,
+  "progress_every_steps": 1000,
+  "serial_timeout_seconds": 25,
+  "handshake_timeout_seconds": 5,
+
+  "plot_3d_mode": "slice_lines",
+  "stl_enabled": true,
+  "stl_ratio_x": 0.5,
+  "stl_ratio_y": 0.5
+}
