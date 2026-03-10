@@ -46,6 +46,7 @@ class MetroConfig:
     user_agent: str = "Mozilla/5.0 (CityLab Metro Experiment)"
     tfl_app_id: str = ""
     tfl_app_key: str = ""
+    tfl_subscription_key: str = ""
     request_timeout_sec: float = 30.0
     request_max_retries: int = 4
     request_backoff_sec: float = 1.0
@@ -70,9 +71,10 @@ class TflClient:
     def _build_url(self, path: str) -> str:
         base = f"https://api.tfl.gov.uk{path}"
         query = {}
-        if self.cfg.tfl_app_id:
+        # Azure subscription-key auth uses header only; query app credentials are optional.
+        if self.cfg.tfl_app_id and not self.cfg.tfl_subscription_key:
             query["app_id"] = self.cfg.tfl_app_id
-        if self.cfg.tfl_app_key:
+        if self.cfg.tfl_app_key and not self.cfg.tfl_subscription_key:
             query["app_key"] = self.cfg.tfl_app_key
         if not query:
             return base
@@ -85,6 +87,7 @@ class TflClient:
             headers={
                 "User-Agent": self.cfg.user_agent,
                 "Accept": "application/json",
+                **({"Ocp-Apim-Subscription-Key": self.cfg.tfl_subscription_key} if self.cfg.tfl_subscription_key else {}),
             },
         )
         max_retries = max(0, int(self.cfg.request_max_retries))
@@ -230,7 +233,7 @@ def fetch_phase2_arrivals(cfg: MetroConfig, client: TflClient) -> pd.DataFrame:
     for snapshot_idx in range(cfg.snapshots):
         captured_at_utc = dt.datetime.now(dt.timezone.utc)
         if cfg.use_mode_arrivals_endpoint:
-            arrivals_all = client.get_json("/Line/Mode/tube/Arrivals")
+            arrivals_all = client.get_json("/Mode/tube/Arrivals")
             arrivals = [a for a in arrivals_all if (a.get("lineId") in line_set)]
             chunks.append(normalize_arrivals(arrivals, snapshot_idx=snapshot_idx, captured_at_utc=captured_at_utc))
         else:

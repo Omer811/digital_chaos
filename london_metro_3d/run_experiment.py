@@ -46,15 +46,28 @@ def main() -> None:
     if args.line_ids:
         cfg.line_ids = [x.strip() for x in args.line_ids.split(",") if x.strip()]
 
-    cred_path = pathlib.Path(args.credentials_file) if args.credentials_file else pathlib.Path("london_metro_3d/tfl_credentials.local.json")
-    creds = load_credentials(cred_path)
+    creds = {}
+    if args.credentials_file:
+        creds = load_credentials(pathlib.Path(args.credentials_file))
+    else:
+        # Prefer local ignored file; fallback to non-local json if user created that.
+        for candidate in (
+            pathlib.Path("london_metro_3d/tfl_credentials.local.json"),
+            pathlib.Path("london_metro_3d/tfl_credentials.json"),
+        ):
+            creds = load_credentials(candidate)
+            if creds:
+                break
     if creds:
         cfg.tfl_app_id = str(creds.get("tfl_app_id", cfg.tfl_app_id))
         active_key = str(creds.get("active_key", "primary")).strip().lower()
         if active_key == "secondary":
-            cfg.tfl_app_key = str(creds.get("tfl_app_key_secondary", cfg.tfl_app_key))
+            key_value = str(creds.get("tfl_app_key_secondary", cfg.tfl_app_key))
         else:
-            cfg.tfl_app_key = str(creds.get("tfl_app_key_primary", cfg.tfl_app_key))
+            key_value = str(creds.get("tfl_app_key_primary", cfg.tfl_app_key))
+        # In TfL APIM product subscriptions, this key is commonly used as Ocp-Apim-Subscription-Key.
+        cfg.tfl_subscription_key = key_value
+        cfg.tfl_app_key = key_value
 
     if args.tfl_app_id:
         cfg.tfl_app_id = args.tfl_app_id

@@ -3,3 +3,4 @@ __pycache__/
 output/
 .venv/
 london_metro_3d/tfl_credentials.local.json
+london_metro_3d/tfl_credentials.json
