@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Tube Schematic 2D</title>
+  <style>
+    :root {
+      --bg0: #060910;
+      --bg1: #0b1020;
+      --bg2: #17243d;
+      --panel: rgba(15, 23, 42, 0.84);
+      --ink: #e2e8f0;
+      --muted: #94a3b8;
+      --line: rgba(148,163,184,0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      background: radial-gradient(1200px 900px at 10% 10%, var(--bg2) 0%, var(--bg1) 55%, var(--bg0) 100%);
+    }
+    .app { display: grid; grid-template-columns: 360px 1fr; gap: 12px; height: 100vh; padding: 12px; }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      overflow: auto;
+    }
+    .viz {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: linear-gradient(150deg, #0b1221 0%, #060910 100%);
+    }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .row { display: grid; gap: 6px; margin-bottom: 10px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    input, button {
+      width: 100%;
+      background: rgba(17,24,39,0.95);
+      color: var(--ink);
+      border: 1px solid rgba(100,116,139,0.45);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 13px;
+    }
+    button { cursor: pointer; font-weight: 600; }
+    #status {
+      white-space: pre-line;
+      color: var(--muted);
+      font-size: 12px;
+      border: 1px solid rgba(100,116,139,0.35);
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(15,23,42,0.45);
+    }
+    @media (max-width: 980px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div class="row">
+        <label>Live State JSON URL</label>
+        <input id="liveStateUrl" value="../output/london_metro_3d/live_realtime/live_state.json" />
+      </div>
+      <div class="row2">
+        <div class="row">
+          <label>Refresh (ms)</label>
+          <input id="refreshMs" type="number" value="1000" min="150" step="50" />
+        </div>
+        <div class="row">
+          <label>Train Size</label>
+          <input id="markerSize" type="number" value="3.5" min="1" step="0.5" />
+        </div>
+      </div>
+      <div class="row2">
+        <div class="row">
+          <label>Frame Delay (ms)</label>
+          <input id="delayMs" type="number" value="1200" min="0" step="100" />
+        </div>
+        <div class="row">
+          <label>Interpolation (ms)</label>
+          <input id="interpMs" type="number" value="1400" min="50" step="50" />
+        </div>
+      </div>
+      <div class="row2">
+        <div class="row">
+          <label>Render FPS</label>
+          <input id="renderFps" type="number" value="60" min="10" max="144" step="1" />
+        </div>
+        <div class="row">
+          <label>Marker Glow</label>
+          <input id="markerGlow" type="number" value="0.35" min="0" max="1" step="0.05" />
+        </div>
+      </div>
+      <div class="row2">
+        <button id="startBtn">Start Live</button>
+        <button id="stopBtn">Stop</button>
+      </div>
+      <div class="row2">
+        <button id="resetViewBtn">Reset View</button>
+        <button id="rebuildBtn">Rebuild Layout</button>
+      </div>
+      <div id="status">Schematic mode idle.</div>
+    </section>
+
+    <section class="viz" id="viz">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="trainCanvas"></canvas>
+    </section>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const vizEl = el('viz');
+    const baseCanvas = el('baseCanvas');
+    const trainCanvas = el('trainCanvas');
+    const baseCtx = baseCanvas.getContext('2d');
+    const trainCtx = trainCanvas.getContext('2d');
+
+    const state = {
+      timer: null,
+      raf: null,
+      queue: [],
+      lastSnapshot: null,
+      current: null,
+      next: null,
+      segStartMs: 0,
+      geomReady: false,
+      nodes: [],
+      edges: [],
+      nodesByGeoKey: new Map(),
+      edgeByGeoLineKey: new Map(),
+      view: { zoom: 1, panX: 0, panY: 0, dragging: false, dragX: 0, dragY: 0 },
+      baseDirty: true,
+      lastRenderTs: 0,
+    };
+
+    function lineColor(lineId) {
+      const m = {
+        bakerloo: '#B36305', central: '#E32017', circle: '#FFD300', district: '#00782A',
+        'hammersmith-city': '#F3A9BB', jubilee: '#A0A5A9', metropolitan: '#9B0056',
+        northern: '#d1d5db', piccadilly: '#003688', victoria: '#0098D4', 'waterloo-city': '#95CDBA',
+        dlr: '#00A4A7', elizabeth: '#6950A1', lioness: '#FFC20E', mildmay: '#0072CE',
+        windrush: '#E21836', suffragette: '#4B9B44', liberty: '#A25A2B', weaver: '#9B1B30'
+      };
+      return m[lineId] || '#34d399';
+    }
+
+    function resolveDataUrl(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      if (/^https?:\/\//i.test(s) || s.startsWith('/')) return s;
+      if (s.startsWith('output/')) return `../${s}`;
+      return s;
+    }
+
+    function setStatus(msg) { el('status').textContent = msg; }
+
+    function resizeCanvases() {
+      const rect = vizEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      for (const c of [baseCanvas, trainCanvas]) {
+        c.width = Math.max(1, Math.floor(rect.width * dpr));
+        c.height = Math.max(1, Math.floor(rect.height * dpr));
+      }
+      baseCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      trainCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      state.baseDirty = true;
+    }
+
+    function geoKey(lon, lat) {
+      return `${Number(lon).toFixed(6)},${Number(lat).toFixed(6)}`;
+    }
+
+    function makeWorldFromFrame(frame) {
+      state.nodes = [];
+      state.edges = [];
+      state.nodesByGeoKey = new Map();
+      state.edgeByGeoLineKey = new Map();
+
+      function ensureNode(lon, lat) {
+        const key = geoKey(lon, lat);
+        if (state.nodesByGeoKey.has(key)) return state.nodesByGeoKey.get(key);
+        const node = {
+          id: state.nodes.length,
+          lon: Number(lon),
+          lat: Number(lat),
+          x: 0,
+          y: 0,
+          sx: 0,
+          sy: 0,
+          degree: 0,
+        };
+        state.nodes.push(node);
+        state.nodesByGeoKey.set(key, node);
+        return node;
+      }
+
+      for (const e of (frame.edges || [])) {
+        const a = ensureNode(e.lon1, e.lat1);
+        const b = ensureNode(e.lon2, e.lat2);
+        const edge = { a, b, line_id: e.line_id };
+        state.edges.push(edge);
+        a.degree += 1;
+        b.degree += 1;
+
+        const k1 = `${e.line_id}|${geoKey(e.lon1,e.lat1)}|${geoKey(e.lon2,e.lat2)}`;
+        const k2 = `${e.line_id}|${geoKey(e.lon2,e.lat2)}|${geoKey(e.lon1,e.lat1)}`;
+        state.edgeByGeoLineKey.set(k1, edge);
+        state.edgeByGeoLineKey.set(k2, edge);
+      }
+
+      // Start from transformed geo for stable schematic feel.
+      const lons = state.nodes.map(n => n.lon);
+      const lats = state.nodes.map(n => n.lat);
+      const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+      const cx = (minLon + maxLon) * 0.5;
+      const cy = (minLat + maxLat) * 0.5;
+      let rmax = 1e-9;
+      for (const n of state.nodes) {
+        const dx = (n.lon - cx) / Math.max(1e-9, (maxLon - minLon));
+        const dy = (n.lat - cy) / Math.max(1e-9, (maxLat - minLat));
+        const r = Math.hypot(dx, dy);
+        if (r > rmax) rmax = r;
+      }
+      for (const n of state.nodes) {
+        let dx = (n.lon - cx) / Math.max(1e-9, (maxLon - minLon));
+        let dy = (n.lat - cy) / Math.max(1e-9, (maxLat - minLat));
+        const r = Math.hypot(dx, dy) / rmax;
+        const rp = Math.pow(r, 0.72); // tube-map-like center expansion
+        const k = r > 1e-9 ? rp / r : 1;
+        dx *= k;
+        dy *= k;
+        n.x = dx * 1000;
+        n.y = dy * 1000;
+      }
+
+      // Relax to cleaner schematic topology.
+      const edgeLen = 26;
+      const springK = 0.18;
+      const repelK = 1700;
+      for (let iter = 0; iter < 90; iter++) {
+        const fx = new Array(state.nodes.length).fill(0);
+        const fy = new Array(state.nodes.length).fill(0);
+
+        for (const e of state.edges) {
+          const a = e.a, b = e.b;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) + 1e-6;
+          const f = springK * (d - edgeLen);
+          const ux = dx / d, uy = dy / d;
+          fx[a.id] += f * ux; fy[a.id] += f * uy;
+          fx[b.id] -= f * ux; fy[b.id] -= f * uy;
+        }
+
+        // Sparse repulsion sampling for speed.
+        for (let i = 0; i < state.nodes.length; i++) {
+          const a = state.nodes[i];
+          for (let j = i + 1; j < state.nodes.length; j += 3) {
+            const b = state.nodes[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const d2 = dx * dx + dy * dy + 4;
+            const f = repelK / d2;
+            const d = Math.sqrt(d2);
+            const ux = dx / d, uy = dy / d;
+            fx[a.id] -= f * ux; fy[a.id] -= f * uy;
+            fx[b.id] += f * ux; fy[b.id] += f * uy;
+          }
+        }
+
+        for (const n of state.nodes) {
+          // Keep central map compact.
+          fx[n.id] += -0.01 * n.x;
+          fy[n.id] += -0.01 * n.y;
+          n.x += Math.max(-5, Math.min(5, fx[n.id] * 0.06));
+          n.y += Math.max(-5, Math.min(5, fy[n.id] * 0.06));
+        }
+      }
+
+      // Snap edge direction toward octilinear style (draw-time anchors).
+      for (const e of state.edges) {
+        const a = e.a, b = e.b;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) + 1e-6;
+        const angle = Math.atan2(dy, dx);
+        const step = Math.PI / 4;
+        const q = Math.round(angle / step) * step;
+        const px = Math.cos(q), py = Math.sin(q);
+        const proj = dx * px + dy * py;
+        e.bx = a.x + px * proj;
+        e.by = a.y + py * proj;
+      }
+
+      // Fit to viewport coordinates.
+      const xs = state.nodes.map(n => n.x);
+      const ys = state.nodes.map(n => n.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const rect = vizEl.getBoundingClientRect();
+      const pad = 36;
+      const w = Math.max(100, rect.width - pad * 2);
+      const h = Math.max(100, rect.height - pad * 2);
+      const sx = w / Math.max(1e-9, maxX - minX);
+      const sy = h / Math.max(1e-9, maxY - minY);
+      const s = Math.min(sx, sy);
+      for (const n of state.nodes) {
+        n.sx = pad + (n.x - minX) * s;
+        n.sy = pad + (n.y - minY) * s;
+      }
+      for (const e of state.edges) {
+        const a = e.a;
+        e.sbx = pad + (e.bx - minX) * s;
+        e.sby = pad + (e.by - minY) * s;
+      }
+
+      state.view.zoom = 1;
+      state.view.panX = 0;
+      state.view.panY = 0;
+      state.geomReady = true;
+      state.baseDirty = true;
+    }
+
+    function viewPt(x, y) {
+      return {
+        x: x * state.view.zoom + state.view.panX,
+        y: y * state.view.zoom + state.view.panY,
+      };
+    }
+
+    function drawBase() {
+      if (!state.geomReady || !state.baseDirty) return;
+      const rect = vizEl.getBoundingClientRect();
+      baseCtx.clearRect(0, 0, rect.width, rect.height);
+      const g = baseCtx.createLinearGradient(0, 0, rect.width, rect.height);
+      g.addColorStop(0, 'rgba(12,18,30,0.95)');
+      g.addColorStop(1, 'rgba(6,9,16,0.95)');
+      baseCtx.fillStyle = g;
+      baseCtx.fillRect(0, 0, rect.width, rect.height);
+
+      // draw line segments with octilinear bend
+      for (const e of state.edges) {
+        const a = viewPt(e.a.sx, e.a.sy);
+        const b = viewPt(e.b.sx, e.b.sy);
+        const m = viewPt(e.sbx, e.sby);
+        baseCtx.strokeStyle = lineColor(e.line_id);
+        baseCtx.globalAlpha = 0.78;
+        baseCtx.lineWidth = 2.6;
+        baseCtx.lineCap = 'round';
+        baseCtx.beginPath();
+        baseCtx.moveTo(a.x, a.y);
+        baseCtx.lineTo(m.x, m.y);
+        baseCtx.lineTo(b.x, b.y);
+        baseCtx.stroke();
+      }
+      baseCtx.globalAlpha = 1;
+      state.baseDirty = false;
+    }
+
+    function interpolateTrain(aFrame, bFrame, alpha) {
+      const a = aFrame ? (aFrame.trains || []) : [];
+      const b = bFrame ? (bFrame.trains || []) : [];
+      const aMap = new Map(a.map(t => [`${t.line_id}::${t.vehicle_id}`, t]));
+      const out = [];
+
+      for (const t of b) {
+        const key = `${t.line_id}::${t.vehicle_id}`;
+        const prev = aMap.get(key);
+        const lon0 = prev ? prev.lon : t.lon;
+        const lat0 = prev ? prev.lat : t.lat;
+        const lon = lon0 + (t.lon - lon0) * alpha;
+        const lat = lat0 + (t.lat - lat0) * alpha;
+
+        // snap train to nearest segment of same line in geo-space
+        let best = null;
+        for (const e of state.edges) {
+          if (e.line_id !== t.line_id) continue;
+          const ax = e.a.lon, ay = e.a.lat;
+          const bx = e.b.lon, by = e.b.lat;
+          const vx = bx - ax, vy = by - ay;
+          const wx = lon - ax, wy = lat - ay;
+          const vv = vx*vx + vy*vy;
+          const tt = vv <= 1e-12 ? 0 : Math.max(0, Math.min(1, (wx*vx + wy*vy)/vv));
+          const gx = ax + tt*vx;
+          const gy = ay + tt*vy;
+          const dx = lon - gx, dy = lat - gy;
+          const d2 = dx*dx + dy*dy;
+          if (!best || d2 < best.d2) best = { e, t: tt, d2 };
+        }
+        if (!best) continue;
+
+        // map snapped t onto schematic polyline (a -> bend -> b)
+        const e = best.e;
+        const aP = { x: e.a.sx, y: e.a.sy };
+        const mP = { x: e.sbx, y: e.sby };
+        const bP = { x: e.b.sx, y: e.b.sy };
+        const d1 = Math.hypot(mP.x - aP.x, mP.y - aP.y);
+        const d2 = Math.hypot(bP.x - mP.x, bP.y - mP.y);
+        const dt = d1 + d2;
+        const dist = best.t * dt;
+        let sx, sy;
+        if (dist <= d1 || d2 < 1e-9) {
+          const u = d1 < 1e-9 ? 0 : dist / d1;
+          sx = aP.x + (mP.x - aP.x) * u;
+          sy = aP.y + (mP.y - aP.y) * u;
+        } else {
+          const u = (dist - d1) / Math.max(1e-9, d2);
+          sx = mP.x + (bP.x - mP.x) * u;
+          sy = mP.y + (bP.y - mP.y) * u;
+        }
+        out.push({ ...t, sx, sy });
+      }
+      return out;
+    }
+
+    function drawTrains(trains) {
+      const rect = vizEl.getBoundingClientRect();
+      trainCtx.clearRect(0, 0, rect.width, rect.height);
+      const size = Math.max(1, Number(el('markerSize').value || 3.5));
+      const glow = Math.max(0, Math.min(1, Number(el('markerGlow').value || 0.35)));
+      for (const t of trains) {
+        const p = viewPt(t.sx, t.sy);
+        trainCtx.shadowBlur = 12;
+        trainCtx.shadowColor = lineColor(t.line_id);
+        trainCtx.globalAlpha = glow;
+        trainCtx.fillStyle = lineColor(t.line_id);
+        trainCtx.beginPath();
+        trainCtx.arc(p.x, p.y, size * 1.8, 0, Math.PI * 2);
+        trainCtx.fill();
+        trainCtx.globalAlpha = 1;
+        trainCtx.shadowBlur = 0;
+        trainCtx.fillStyle = lineColor(t.line_id);
+        trainCtx.beginPath();
+        trainCtx.arc(p.x, p.y, size, 0, Math.PI * 2);
+        trainCtx.fill();
+      }
+    }
+
+    function updateStatus(frame) {
+      const m = frame.meta || {};
+      const pollMs = Math.max(150, Number(el('refreshMs').value || 1000));
+      const reqPerMin = (60000 / pollMs).toFixed(1);
+      setStatus([
+        `snapshot=${frame.snapshot_idx}`,
+        `captured=${frame.captured_at_utc}`,
+        `modes=${(frame.modes || []).join(',') || 'tube'}`,
+        `lines=${m.line_count ?? 'n/a'}`,
+        `arrivals_all=${m.arrivals_all_count ?? 'n/a'}`,
+        `trains_rendered=${m.trains_rendered_count ?? (frame.trains || []).length}`,
+        `unique_vehicles=${m.unique_vehicle_count ?? 'n/a'}`,
+        `poll_ms=${pollMs} (~${reqPerMin} req/min)`,
+        `render_fps=${Math.max(10, Number(el('renderFps').value || 60))}`,
+      ].join('\n'));
+    }
+
+    function animate(ts) {
+      const fps = Math.max(10, Number(el('renderFps').value || 60));
+      const minDt = 1000 / fps;
+      if (state.lastRenderTs && (ts - state.lastRenderTs) < minDt) {
+        state.raf = requestAnimationFrame(animate);
+        return;
+      }
+      state.lastRenderTs = ts;
+
+      if (!state.current && state.queue.length > 0) {
+        state.current = state.queue.shift();
+        makeWorldFromFrame(state.current);
+      }
+      if (state.current && !state.next && state.queue.length > 0) {
+        state.next = state.queue.shift();
+        state.segStartMs = ts;
+      }
+
+      drawBase();
+
+      if (state.current && state.next) {
+        const dur = Math.max(50, Number(el('interpMs').value || 1400));
+        const alpha = Math.max(0, Math.min(1, (ts - state.segStartMs) / dur));
+        const trains = interpolateTrain(state.current, state.next, alpha);
+        drawTrains(trains);
+        updateStatus(state.next);
+        if (alpha >= 1) {
+          state.current = state.next;
+          state.next = null;
+        }
+      } else if (state.current) {
+        const trains = interpolateTrain(state.current, state.current, 1);
+        drawTrains(trains);
+        updateStatus(state.current);
+      }
+
+      state.raf = requestAnimationFrame(animate);
+    }
+
+    async function fetchFrameOnce() {
+      const url = resolveDataUrl(el('liveStateUrl').value);
+      if (!url) return;
+      const r = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const frame = await r.json();
+      if (state.lastSnapshot === frame.snapshot_idx) return;
+      state.lastSnapshot = frame.snapshot_idx;
+      state.queue.push(frame);
+
+      const refresh = Math.max(150, Number(el('refreshMs').value || 1000));
+      const delay = Math.max(0, Number(el('delayMs').value || 1200));
+      const maxBuffered = Math.max(2, Math.floor(delay / refresh) + 2);
+      while (state.queue.length > maxBuffered) state.queue.shift();
+    }
+
+    function start() {
+      stop();
+      fetchFrameOnce().catch((e) => setStatus(`Fetch error: ${e.message}`));
+      const ms = Math.max(150, Number(el('refreshMs').value || 1000));
+      el('refreshMs').value = String(ms);
+      state.timer = setInterval(() => fetchFrameOnce().catch((e) => setStatus(`Fetch error: ${e.message}`)), ms);
+    }
+
+    function stop() {
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+
+    function resetView() {
+      state.view.zoom = 1;
+      state.view.panX = 0;
+      state.view.panY = 0;
+      state.baseDirty = true;
+    }
+
+    // pan/zoom interactions
+    trainCanvas.addEventListener('mousedown', (e) => {
+      state.view.dragging = true;
+      state.view.dragX = e.clientX;
+      state.view.dragY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => { state.view.dragging = false; });
+    window.addEventListener('mousemove', (e) => {
+      if (!state.view.dragging) return;
+      const dx = e.clientX - state.view.dragX;
+      const dy = e.clientY - state.view.dragY;
+      state.view.dragX = e.clientX;
+      state.view.dragY = e.clientY;
+      state.view.panX += dx;
+      state.view.panY += dy;
+      state.baseDirty = true;
+    });
+    trainCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = trainCanvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const oldZoom = state.view.zoom;
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const newZoom = Math.max(0.2, Math.min(12, oldZoom * factor));
+      state.view.zoom = newZoom;
+      const scale = newZoom / oldZoom;
+      state.view.panX = mx - (mx - state.view.panX) * scale;
+      state.view.panY = my - (my - state.view.panY) * scale;
+      state.baseDirty = true;
+    }, { passive: false });
+
+    el('startBtn').addEventListener('click', start);
+    el('stopBtn').addEventListener('click', stop);
+    el('resetViewBtn').addEventListener('click', resetView);
+    el('rebuildBtn').addEventListener('click', () => {
+      if (state.current) {
+        makeWorldFromFrame(state.current);
+      }
+    });
+    window.addEventListener('resize', resizeCanvases);
+
+    resizeCanvases();
+    state.raf = requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

@@ -47,6 +47,7 @@ class MetroConfig:
     tfl_app_id: str = ""
     tfl_app_key: str = ""
     tfl_subscription_key: str = ""
+    verbose: bool = True
     request_timeout_sec: float = 30.0
     request_max_retries: int = 4
     request_backoff_sec: float = 1.0
@@ -67,6 +68,10 @@ class TflClient:
     def __init__(self, cfg: MetroConfig):
         self.cfg = cfg
         self._request_timestamps = deque()
+
+    def _log(self, msg: str) -> None:
+        if self.cfg.verbose:
+            print(f"[TFL] {msg}")
 
     def _build_url(self, path: str) -> str:
         base = f"https://api.tfl.gov.uk{path}"
@@ -99,10 +104,12 @@ class TflClient:
             except urllib.error.HTTPError as err:
                 if not self._should_retry_http(err, attempt, max_retries):
                     raise
+                self._log(f"HTTP {err.code} for {path}; retry {attempt + 1}/{max_retries} in {self._retry_delay(err, attempt):.2f}s")
                 time.sleep(self._retry_delay(err, attempt))
             except urllib.error.URLError:
                 if attempt >= max_retries:
                     raise
+                self._log(f"Network error for {path}; retry {attempt + 1}/{max_retries} in {float(self.cfg.request_backoff_sec) * (2 ** attempt):.2f}s")
                 time.sleep(float(self.cfg.request_backoff_sec) * (2 ** attempt))
         raise RuntimeError("Unexpected retry loop exit in get_json")
 
@@ -171,6 +178,9 @@ def build_network_from_route_sequences(route_payloads: Dict[str, Dict[str, Any]]
             for a, b in zip(stop_ids, stop_ids[1:]):
                 if a == b:
                     continue
+                # Keep only edges between station nodes that have coordinates.
+                if a not in stations or b not in stations:
+                    continue
                 edge_counts[(line_id, a, b)] += 1
 
     stations_df = pd.DataFrame(sorted(stations.values(), key=lambda x: x["station_id"]))
@@ -185,9 +195,13 @@ def build_network_from_route_sequences(route_payloads: Dict[str, Dict[str, Any]]
 def fetch_phase1_network(cfg: MetroConfig, client: TflClient) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str, Any]]]:
     route_payloads: Dict[str, Dict[str, Any]] = {}
     for line_id in cfg.line_ids:
+        if cfg.verbose:
+            print(f"[Phase1] Loading route sequence for line='{line_id}'")
         route_payloads[line_id] = client.get_json(f"/Line/{line_id}/Route/Sequence/all")
 
     stations_df, edges_df = build_network_from_route_sequences(route_payloads)
+    if cfg.verbose:
+        print(f"[Phase1] Loaded network: stations={len(stations_df)} edges={len(edges_df)}")
     return stations_df, edges_df, route_payloads
 
 
@@ -232,21 +246,32 @@ def fetch_phase2_arrivals(cfg: MetroConfig, client: TflClient) -> pd.DataFrame:
     line_set = set(cfg.line_ids)
     for snapshot_idx in range(cfg.snapshots):
         captured_at_utc = dt.datetime.now(dt.timezone.utc)
+        if cfg.verbose:
+            print(f"[Phase2] Snapshot {snapshot_idx + 1}/{cfg.snapshots} at {captured_at_utc.isoformat()}")
         if cfg.use_mode_arrivals_endpoint:
             arrivals_all = client.get_json("/Mode/tube/Arrivals")
             arrivals = [a for a in arrivals_all if (a.get("lineId") in line_set)]
+            if cfg.verbose:
+                print(f"[Phase2]   fetched arrivals(all tube)={len(arrivals_all)} filtered={len(arrivals)} lines={len(line_set)}")
             chunks.append(normalize_arrivals(arrivals, snapshot_idx=snapshot_idx, captured_at_utc=captured_at_utc))
         else:
             for line_id in cfg.line_ids:
                 arrivals = client.get_json(f"/Line/{line_id}/Arrivals")
+                if cfg.verbose:
+                    print(f"[Phase2]   line='{line_id}' arrivals={len(arrivals)}")
                 chunk = normalize_arrivals(arrivals, snapshot_idx=snapshot_idx, captured_at_utc=captured_at_utc)
                 chunks.append(chunk)
         if snapshot_idx != cfg.snapshots - 1:
+            if cfg.verbose:
+                print(f"[Phase2]   sleeping {cfg.snapshot_interval_sec:.2f}s before next snapshot")
             time.sleep(cfg.snapshot_interval_sec)
 
     if not chunks:
         return pd.DataFrame()
-    return pd.concat(chunks, ignore_index=True)
+    out = pd.concat(chunks, ignore_index=True)
+    if cfg.verbose:
+        print(f"[Phase2] Total normalized arrival rows={len(out)}")
+    return out
 
 
 def map_arrivals_to_coordinates(arrivals_df: pd.DataFrame, stations_df: pd.DataFrame) -> pd.DataFrame:

@@ -16,6 +16,8 @@ This experiment builds a **3D view of London Underground traffic flow** using Tf
 - `london_metro_3d/tfl_credentials.example.json`: template for primary/secondary TfL keys.
 - `london_metro_3d/build_timeline_data.py`: converts phase outputs to timeline JSON for live UI playback.
 - `london_metro_3d/live_timeline.html`: interactive timeline UI (fast-forward + cumulative hotspots).
+- `london_metro_3d/run_live_mode.py`: realtime all-trains 3D capture mode with JSON snapshot recording.
+- `london_metro_3d/live_network_realtime.html`: realtime viewer for `live_state.json` (line-depth 3D).
 - `london_metro_3d/tests/test_metro_pipeline.py`: phase/unit/integration tests.
 - `london_metro_3d/tests/test_timeline_data.py`: timeline JSON build tests.
 - `london_metro_3d/config.example.json`: JSON-configurable run settings.
@@ -130,3 +132,34 @@ In the UI:
 - set Snapshot Step + FPS for fast-forward speed
 - press `Play`
 - hotspots are cumulative, so you can watch them emerge over time
+
+## Realtime 3D mode (all trains + line depth + JSON capture)
+
+Run live collector:
+
+```bash
+python3 london_metro_3d/run_live_mode.py \
+  --snapshots 300 \
+  --interval-sec 2 \
+  --output-dir output/london_metro_3d/live_realtime \
+  --reset-history
+```
+
+What it writes:
+- `output/london_metro_3d/live_realtime/live_state.json` (latest frame for viewer)
+- `output/london_metro_3d/live_realtime/live_snapshots.jsonl` (full realtime history)
+- `output/london_metro_3d/live_realtime/live_network_static.json` (network + line depths)
+
+Open realtime web view:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open:
+
+`http://localhost:8000/london_metro_3d/live_network_realtime.html`
+
+Set JSON URL to:
+
+`output/london_metro_3d/live_realtime/live_state.json`
