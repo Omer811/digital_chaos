@@ -26,6 +26,18 @@ except ModuleNotFoundError:
         map_arrivals_to_coordinates,
         normalize_arrivals,
     )
+try:
+    from london_metro_3d.live_positioning import (
+        build_segment_seconds_from_timetable,
+        build_station_lookup,
+        derive_vehicle_position_from_arrivals,
+    )
+except ModuleNotFoundError:
+    from live_positioning import (  # type: ignore
+        build_segment_seconds_from_timetable,
+        build_station_lookup,
+        derive_vehicle_position_from_arrivals,
+    )
 
 
 DEFAULT_LINE_DEPTHS = {
@@ -222,6 +234,24 @@ def run_live_mode(cfg: MetroConfig, args: argparse.Namespace) -> None:
     print("[LiveMode] Loading network graph...")
     stations_df, edges_df, route_payloads = fetch_phase1_network(cfg, client)
     line_depths = dict(DEFAULT_LINE_DEPTHS)
+    station_lookup = build_station_lookup(stations_df.to_dict(orient="records"))
+
+    segment_seconds_by_line: Dict[str, Dict[tuple, float]] = {}
+    for line_id in cfg.line_ids:
+        try:
+            payload = route_payloads.get(line_id, {})
+            seqs = payload.get("stopPointSequences", []) or []
+            if not seqs:
+                continue
+            stop_ids = [sp.get("id") for sp in seqs[0].get("stopPoint", []) if sp.get("id")]
+            if len(stop_ids) < 2:
+                continue
+            tt = client.get_json(f"/Line/{line_id}/Timetable/{stop_ids[0]}/to/{stop_ids[-1]}")
+            segment_seconds_by_line[line_id] = build_segment_seconds_from_timetable(tt, payload)
+        except Exception as err:
+            if cfg.verbose:
+                print(f"[LiveMode] timetable segment-time fetch failed for line='{line_id}': {err}")
+            segment_seconds_by_line[line_id] = {}
 
     sequence_edges = build_sequence_edge_payload(route_payloads, line_depths)
     edges_payload = sequence_edges if sequence_edges else build_edge_payload(edges_df, stations_df, line_depths)
@@ -251,11 +281,46 @@ def run_live_mode(cfg: MetroConfig, args: argparse.Namespace) -> None:
             rows = client.get_json(f"/Mode/{mode}/Arrivals")
             mode_counts[mode] = len(rows)
             arrivals_all.extend(rows)
-        arrivals_filtered = [a for a in arrivals_all if a.get("lineId") in line_set]
+        arrivals_filtered = [
+            a for a in arrivals_all
+            if a.get("lineId") in line_set and int(a.get("operationType") or 0) == 1
+        ]
 
-        arrivals_df = normalize_arrivals(arrivals_filtered, snapshot_idx=snapshot_idx, captured_at_utc=captured_at)
-        points_df = map_arrivals_to_coordinates(arrivals_df, stations_df)
-        trains_payload = build_train_payload(points_df, line_depths)
+        by_vehicle: Dict[tuple, List[Dict[str, Any]]] = {}
+        for a in arrivals_filtered:
+            lid = str(a.get("lineId") or "")
+            vid = str(a.get("vehicleId") or "")
+            if not lid or not vid:
+                continue
+            by_vehicle.setdefault((lid, vid), []).append(a)
+
+        trains_payload = []
+        for (line_id, vehicle_id), vehicle_rows in by_vehicle.items():
+            inferred = derive_vehicle_position_from_arrivals(
+                vehicle_rows=vehicle_rows,
+                station_lookup=station_lookup,
+                segment_seconds=segment_seconds_by_line.get(line_id, {}),
+            )
+            if not inferred:
+                continue
+            depth = float(line_depths.get(line_id, -20.0))
+            trains_payload.append(
+                {
+                    "line_id": line_id,
+                    "vehicle_id": vehicle_id,
+                    "station_id": str(vehicle_rows[0].get("naptanId") or ""),
+                    "station_name": str(vehicle_rows[0].get("stationName") or ""),
+                    "lon": float(inferred["lon"]),
+                    "lat": float(inferred["lat"]),
+                    "z": depth,
+                    "time_to_station_sec": float(inferred["time_to_station_sec"]),
+                    "position_source": inferred.get("position_source"),
+                    "segment_from": inferred.get("segment_from"),
+                    "segment_to": inferred.get("segment_to"),
+                    "current_location": inferred.get("current_location"),
+                }
+            )
+
         unique_vehicles = len({t["vehicle_id"] for t in trains_payload})
 
         live_payload = {
@@ -264,6 +329,7 @@ def run_live_mode(cfg: MetroConfig, args: argparse.Namespace) -> None:
             "modes": modes,
             "line_depths": line_depths,
             "edges": edges_payload,
+            "stations": stations_df.to_dict(orient="records"),
             "streets": [],
             "trains": trains_payload,
             "meta": {
@@ -308,7 +374,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Realtime London network 3D mode with snapshot capture")
     p.add_argument("--output-dir", default="output/london_metro_3d/live_realtime", help="Output folder")
     p.add_argument("--snapshots", type=int, default=300, help="Number of snapshots")
-    p.add_argument("--interval-sec", type=float, default=2.0, help="Seconds between snapshots")
+    p.add_argument("--interval-sec", type=float, default=3.0, help="Seconds between snapshots")
     p.add_argument("--rate-limit-per-min", type=int, default=450, help="Hard cap requests per minute")
     p.add_argument("--modes", default="tube", help="Comma-separated TfL modes, e.g. tube,dlr,overground,elizabeth-line")
     p.add_argument("--line-ids", default="", help="Optional explicit comma-separated line ids override")
